@@ -55,6 +55,9 @@ function injectBaseStyles() {
     "[data-carousel-viewport] img{-webkit-user-drag:none;user-drag:none;}",
     /* Keyboard focus visibility for the controls. */
     "[data-carousel-arrow]:focus-visible,[data-carousel-prev]:focus-visible,[data-carousel-next]:focus-visible,[data-carousel-dot]:focus-visible{outline:2px solid currentColor;outline-offset:3px;border-radius:6px;}",
+    /* Disabled arrow at a scroll end — dimmed + non-interactive. Targets the
+       data-attribute so it works regardless of the arrow's Webflow classes. */
+    "[data-carousel-arrow][disabled],[data-carousel-arrow][aria-disabled=\"true\"],[data-carousel-prev][disabled],[data-carousel-next][disabled]{opacity:.3;pointer-events:none;cursor:default;}",
     /* Visually-hidden live-region announcer. */
     ".el-carousel-live{position:absolute!important;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0;}",
   ].join("");
