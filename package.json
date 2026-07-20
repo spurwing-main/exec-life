@@ -1,0 +1,21 @@
+{
+	"name": "@spurwing/exec-life-client",
+	"private": true,
+	"type": "module",
+	"scripts": {
+		"build": "mkdir -p dist && esbuild bundle.js --bundle --minify --outfile=dist/bundle.js",
+		"dev": "node dev.mjs",
+		"postinstall": "git config core.hooksPath .githooks",
+		"test": "vitest run",
+		"test:watch": "vitest"
+	},
+	"devDependencies": {
+		"esbuild": "^0.25.2",
+		"jsdom": "^29.1.1",
+		"vitest": "^4.1.8"
+	},
+	"dependencies": {
+		"embla-carousel": "^8.6.0",
+		"embla-carousel-autoplay": "^8.6.0"
+	}
+}

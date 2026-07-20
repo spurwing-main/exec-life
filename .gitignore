@@ -1,0 +1,12 @@
+.env.local
+node_modules/
+.pnpm-store/
+.DS_Store
+
+# Worker local build cache
+worker/.wrangler/
+
+# Local reference/scratch (not part of the repo)
+test-output/
+outputs/
+scratchpad/

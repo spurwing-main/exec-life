@@ -1,0 +1,16 @@
+{
+  "name": "exec-life-worker",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "wrangler": "latest"
+  },
+  "dependencies": {
+    "hono": "^4.12.25"
+  }
+}

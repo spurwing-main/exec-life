@@ -1,0 +1,9 @@
+name = "exec-life-worker"
+main = "src/index.js"
+compatibility_date = "2026-05-21"
+
+[vars]
+ALLOWED_ORIGINS = "https://www.exec-life.com,https://exec-life.com,http://localhost:3000"
+
+# Set secrets with wrangler secret put:
+# (none yet — add as routes are introduced)
