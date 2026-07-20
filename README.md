@@ -117,6 +117,30 @@ Real visitors on the production domain never probe — they go straight to the C
 In dev, a floating panel (bottom-left) shows the live status and lets you flip
 between **Local / Auto / Live** and toggle "keep dev mode on this browser".
 
+### Releasing (you control what's live)
+
+The live bundle is **pinned to an exact commit** via `DEFAULTS.commit` in
+[`loader.js`](loader.js) — not `@main`. Pushing new code does **not** change the
+live site until you bump the pin. To ship a new bundle:
+
+```bash
+# 1. commit your bundle changes (the git hook rebuilds dist/bundle.js)
+git add -A && git commit -m "…"
+
+# 2. pin the loader to that commit
+git rev-parse HEAD                       # copy the full SHA
+#   → set DEFAULTS.commit = "<that SHA>" in loader.js
+git commit -am "release: pin bundle to <short-sha>"
+git push
+
+# 3. purge the loader from jsDelivr so the new pin is picked up
+#    https://purge.jsdelivr.net/gh/spurwing-main/exec-life@main/loader.js
+```
+
+To **roll back**, set `DEFAULTS.commit` to an older SHA and repeat steps 2–3.
+The bundle at each SHA is immutable on jsDelivr, so rollbacks are exact.
+Test any commit before releasing with `?commit=<sha>` on the live URL.
+
 **LocalCan URL:** set `DEFAULTS.localBase` in [`loader.js`](loader.js) to your
 LocalCan HTTPS tunnel (e.g. `https://spurwing-el-XX.beta.localcan.dev`). Plain
 `http://localhost:5500` works too, but only in Chrome — Safari/Firefox block

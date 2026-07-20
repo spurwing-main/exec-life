@@ -27,7 +27,11 @@
   const DEFAULTS = {
     owner: "spurwing-main",
     project: "exec-life",
-    commit: "main", // pin to a SHA for cache-stable prod, or leave "main"
+    // The live bundle is pinned to this exact commit — nothing goes live until
+    // you bump it. Release = commit the new bundle, set this to that commit's
+    // full SHA, commit, then purge loader.js on jsDelivr. See "Releasing" in the
+    // README. (Override per-request with ?commit=<sha>.)
+    commit: "c061128bba9d7cd1e96f514f029e7a3a532e3f86",
     // Your LocalCan HTTPS tunnel for `npm run dev`. Swap for your real tunnel URL.
     // Plain http://localhost:5500 also works, but only in Chrome (mixed content
     // blocks http from an https Webflow page in Safari/Firefox).
