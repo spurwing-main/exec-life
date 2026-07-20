@@ -49,19 +49,27 @@ npm install        # also installs the git hooks (see "Build")
 
 ## Local development
 
-Serve the **source** modules (unbundled, no build step):
+Serve a **bundled** dev build (esbuild — deps like embla resolved, inline
+sourcemap), rebuilt on every request:
 
 ```bash
 npm run dev        # serves http://localhost:5500/bundle.js
 ```
 
-With the loader already in Webflow, you don't touch Webflow again: the loader
-auto-probes LocalCan and injects your local `bundle.js` whenever `npm run dev`
-is running (see [Dev / local switching](#dev--local-switching)). Stop the dev
-server and it silently falls back to the CDN.
+With the loader already in Webflow, you don't touch Webflow again: on a dev host
+(`localhost`, `*.webflow.io`) it auto-probes `localhost:5500` and injects your
+local build whenever `npm run dev` is running (see
+[Dev / local switching](#dev--local-switching)). Stop the dev server and it
+silently falls back to the CDN.
 
-`dev.mjs` serves files with `Cache-Control: no-store` and permissive CORS, so a
-refresh always picks up your latest edit.
+`dev.mjs` bundles on the fly and serves with `Cache-Control: no-store` and
+permissive CORS, so a refresh always runs your latest source — **no build step,
+no LocalCan needed** for same-machine dev.
+
+> **Browser note:** an https Webflow page loading `http://localhost:5500` is
+> mixed content — **Chrome allows `localhost`**, but Safari/Firefox block it. Use
+> Chrome for local dev, or point `DEFAULTS.localBase` at a LocalCan HTTPS tunnel
+> for cross-browser work.
 
 ---
 
