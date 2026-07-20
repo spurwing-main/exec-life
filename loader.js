@@ -3,7 +3,7 @@
 // This is the ONLY file Webflow references. Put one tag in Project Settings →
 // Custom Code → Head (or Footer), PINNED TO A COMMIT SHA:
 //
-//   <script src="https://cdn.jsdelivr.net/gh/spurwing-main/exec-life@<SHA>/loader.js"></script>
+//   <script src="https://cdn.jsdelivr.net/gh/spurwing-tim/exec-life@<SHA>/loader.js"></script>
 //
 // Run `npm run tag` to print the exact tag for the current commit.
 //
@@ -35,7 +35,7 @@
     // Fallbacks, used only if the loader's own <script src> can't be parsed
     // (e.g. loaded inline, or from localhost during dev). Normally owner/project/
     // commit are read from the Webflow tag URL — the SHA there IS the pin.
-    owner: "spurwing-main",
+    owner: "spurwing-tim",
     project: "exec-life",
     commit: "main",
     // Your LocalCan HTTPS tunnel for `npm run dev`. Swap for your real tunnel URL.

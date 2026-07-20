@@ -83,7 +83,7 @@ Add **one** tag to the site-wide custom code (Project Settings â†’ Custom Code â
 Head Code), pinned to a **commit SHA** (run `npm run tag` to generate it):
 
 ```html
-<script src="https://cdn.jsdelivr.net/gh/spurwing-main/exec-life@<SHA>/loader.js"></script>
+<script src="https://cdn.jsdelivr.net/gh/spurwing-tim/exec-life@<SHA>/loader.js"></script>
 ```
 
 [`loader.js`](loader.js) is the only thing Webflow references. It reads its own
