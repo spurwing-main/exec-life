@@ -5,6 +5,7 @@
 	"scripts": {
 		"build": "mkdir -p dist && esbuild bundle.js --bundle --minify --outfile=dist/bundle.js",
 		"dev": "node dev.mjs",
+		"tag": "node tag.mjs",
 		"postinstall": "git config core.hooksPath .githooks",
 		"test": "vitest run",
 		"test:watch": "vitest"

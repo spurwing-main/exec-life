@@ -1,20 +1,27 @@
 // Exec-Life loader.
 //
 // This is the ONLY file Webflow references. Put one tag in Project Settings →
-// Custom Code → Head (or Footer):
+// Custom Code → Head (or Footer), PINNED TO A COMMIT SHA:
 //
-//   <script src="https://cdn.jsdelivr.net/gh/spurwing-main/exec-life@main/loader.js"></script>
+//   <script src="https://cdn.jsdelivr.net/gh/spurwing-main/exec-life@<SHA>/loader.js"></script>
 //
-// The loader decides where to load the site bundle (`dist/bundle.js`) from,
-// injects it, and — in dev — shows a small floating control panel. All logic
-// lives here in the repo, not pasted into Webflow.
+// Run `npm run tag` to print the exact tag for the current commit.
+//
+// WHY A SHA, NOT @main:
+//   A commit-pinned URL is immutable on jsDelivr → cached forever → you never
+//   purge anything, and nothing ever goes stale. To release, you change the SHA
+//   in the Webflow tag and publish. To roll back, change it back. The pin lives
+//   in Webflow (which serves fresh HTML), not in this cached file.
+//
+// The loader reads its OWN commit from the <script src> and loads the matching
+// `dist/bundle.js` from the same commit, so loader and bundle can never drift.
 //
 // Resolution order (first match wins):
 //   1. URL params      ?env=local | ?env=live | ?commit=<sha> | ?local=<url> | ?dev=1 | ?dev=0
 //   2. Persisted dev   localStorage el_dev_enabled === "true" (+ el_env / el_local / el_commit)
 //   3. Auto-probe      on dev hosts (localhost / *.webflow.io) or when dev is on:
 //                      quietly check if LocalCan is up and switch to it, else CDN.
-//   4. Default         live → pinned CDN bundle.
+//   4. Default         live → the bundle from this loader's own commit.
 //
 // Real visitors on the production domain never probe and go straight to the CDN.
 
@@ -25,13 +32,12 @@
   const params = new URLSearchParams(location.search);
 
   const DEFAULTS = {
+    // Fallbacks, used only if the loader's own <script src> can't be parsed
+    // (e.g. loaded inline, or from localhost during dev). Normally owner/project/
+    // commit are read from the Webflow tag URL — the SHA there IS the pin.
     owner: "spurwing-main",
     project: "exec-life",
-    // The live bundle is pinned to this exact commit — nothing goes live until
-    // you bump it. Release = commit the new bundle, set this to that commit's
-    // full SHA, commit, then purge loader.js on jsDelivr. See "Releasing" in the
-    // README. (Override per-request with ?commit=<sha>.)
-    commit: "c061128bba9d7cd1e96f514f029e7a3a532e3f86",
+    commit: "main",
     // Your LocalCan HTTPS tunnel for `npm run dev`. Swap for your real tunnel URL.
     // Plain http://localhost:5500 also works, but only in Chrome (mixed content
     // blocks http from an https Webflow page in Safari/Firefox).
@@ -87,9 +93,22 @@
 
   const persisted = (k) => (devEnabled ? store.get(k) : null);
 
-  const owner = DEFAULTS.owner;
-  const project = DEFAULTS.project;
-  const commit = param("commit") || persisted(KEYS.commit) || DEFAULTS.commit;
+  // Read owner/project/commit from this loader's own tag URL, e.g.
+  //   https://cdn.jsdelivr.net/gh/<owner>/<project>@<commit>/loader.js
+  // The <commit> in the Webflow tag is the pin — change it there to release.
+  const self = (() => {
+    try {
+      const src = document.currentScript && document.currentScript.src;
+      const m = src && src.match(/\/gh\/([^/]+)\/([^@/]+)@([^/]+)\/(?:.*\/)?loader\.js/);
+      return m ? { owner: m[1], project: m[2], ref: m[3] } : null;
+    } catch {
+      return null;
+    }
+  })();
+
+  const owner = self?.owner || DEFAULTS.owner;
+  const project = self?.project || DEFAULTS.project;
+  const commit = param("commit") || persisted(KEYS.commit) || self?.ref || DEFAULTS.commit;
   const localBase = (param("local") || persisted(KEYS.local) || DEFAULTS.localBase).replace(/\/$/, "");
 
   // env: "local" | "live" | "auto"  (auto = probe LocalCan, pick whatever is up)

@@ -80,26 +80,29 @@ npm run build      # esbuild bundles + minifies bundle.js → dist/bundle.js
 ## Adding it to the live Webflow site
 
 Add **one** tag to the site-wide custom code (Project Settings → Custom Code →
-Head Code), pointing at the loader:
+Head Code), pinned to a **commit SHA** (run `npm run tag` to generate it):
 
 ```html
-<script src="https://cdn.jsdelivr.net/gh/spurwing-main/exec-life@main/loader.js"></script>
+<script src="https://cdn.jsdelivr.net/gh/spurwing-main/exec-life@<SHA>/loader.js"></script>
 ```
 
-[`loader.js`](loader.js) is the only thing Webflow references. It decides where
-to load `dist/bundle.js` from, injects it as an ES module, and in dev shows a
-small floating control panel. All that logic lives in the repo, not pasted into
-Webflow.
+[`loader.js`](loader.js) is the only thing Webflow references. It reads its own
+commit from the tag URL, loads the matching `dist/bundle.js` from that same
+commit, injects it as an ES module, and in dev shows a small floating control
+panel. All that logic lives in the repo, not pasted into Webflow.
+
+**Why a SHA and not `@main`:** a commit-pinned jsDelivr URL is **immutable —
+cached forever, never purged, never stale**. The version pin lives in the
+Webflow tag (Webflow serves fresh HTML), not inside a cached file. That makes
+caching work *for* you: releasing is just changing the SHA and publishing.
 
 Notes:
 - The bundle attaches its init functions under `window.el.functions` and adds
   the `el-ready` class to `<html>` once boot completes, so CSS can gate on
   `.el-ready`. `loader.js` also adds `el-ready` as a safety net if the bundle
   fails to load, so content is never trapped hidden.
-- `loader.js` is served over jsDelivr @main, which caches for up to ~7 days.
-  After editing `loader.js`, purge it (visit the `purge/` jsDelivr URL) or pin a
-  commit. (Your `bundle.js` doesn't have this problem in dev — it's pulled live
-  from LocalCan.)
+- Avoid `@main` in the live tag — branch URLs cache for ~7 days and go stale.
+  Use a SHA. (`?commit=<sha>` still overrides per-request for testing.)
 
 ### Dev / local switching
 
@@ -119,27 +122,23 @@ between **Local / Auto / Live** and toggle "keep dev mode on this browser".
 
 ### Releasing (you control what's live)
 
-The live bundle is **pinned to an exact commit** via `DEFAULTS.commit` in
-[`loader.js`](loader.js) — not `@main`. Pushing new code does **not** change the
-live site until you bump the pin. To ship a new bundle:
+Nothing goes live from a `git push` alone — the live version is whichever SHA is
+in the Webflow tag. To ship:
 
 ```bash
-# 1. commit your bundle changes (the git hook rebuilds dist/bundle.js)
-git add -A && git commit -m "…"
+# 1. commit your changes (the git hook rebuilds dist/bundle.js) and push
+git add -A && git commit -m "…" && git push
 
-# 2. pin the loader to that commit
-git rev-parse HEAD                       # copy the full SHA
-#   → set DEFAULTS.commit = "<that SHA>" in loader.js
-git commit -am "release: pin bundle to <short-sha>"
-git push
+# 2. print the paste-ready tag for that commit
+npm run tag
+#   → <script src="…/exec-life@<SHA>/loader.js"></script>
 
-# 3. purge the loader from jsDelivr so the new pin is picked up
-#    https://purge.jsdelivr.net/gh/spurwing-main/exec-life@main/loader.js
+# 3. paste it into Webflow → Custom Code → Head, and Publish. Done.
 ```
 
-To **roll back**, set `DEFAULTS.commit` to an older SHA and repeat steps 2–3.
-The bundle at each SHA is immutable on jsDelivr, so rollbacks are exact.
-Test any commit before releasing with `?commit=<sha>` on the live URL.
+No jsDelivr purge, ever — commit URLs are immutable. **Roll back** by pasting an
+older SHA's tag (`npm run tag -- <old-sha>`) and publishing. **Preview** any
+commit on the live site without releasing via `?commit=<sha>`.
 
 **LocalCan URL:** set `DEFAULTS.localBase` in [`loader.js`](loader.js) to your
 LocalCan HTTPS tunnel (e.g. `https://spurwing-el-XX.beta.localcan.dev`). Plain
