@@ -70,8 +70,14 @@ function setupCarousel(root) {
   let dots = [];
   const buildDots = () => {
     if (!dotsWrap) return;
+    const snaps = embla.scrollSnapList(); // undefined when Embla is inactive
+    if (!snaps) {
+      dotsWrap.replaceChildren();
+      dots = [];
+      return;
+    }
     dotsWrap.replaceChildren();
-    dots = embla.scrollSnapList().map((_, i) => {
+    dots = snaps.map((_, i) => {
       const dot = document.createElement("button");
       dot.type = "button";
       dot.setAttribute("data-carousel-dot", "");
@@ -83,15 +89,16 @@ function setupCarousel(root) {
   };
 
   const onSelect = () => {
-    const selected = embla.selectedScrollSnap();
+    const selected = embla.selectedScrollSnap(); // undefined when Embla is inactive
+    if (selected == null) return;
     dots.forEach((dot, i) =>
       dot.setAttribute("data-active", i === selected ? "true" : "false")
     );
     if (prev) prev.toggleAttribute("disabled", !embla.canScrollPrev());
     if (next) next.toggleAttribute("disabled", !embla.canScrollNext());
-    embla
-      .slideNodes()
-      .forEach((slide, i) => slide.setAttribute("data-active", i === selected ? "true" : "false"));
+    (embla.slideNodes() || []).forEach((slide, i) =>
+      slide.setAttribute("data-active", i === selected ? "true" : "false")
+    );
   };
 
   embla.on("init", () => {
@@ -106,8 +113,10 @@ function setupCarousel(root) {
   buildDots();
   onSelect();
 
-  // Pause autoplay while off-screen (mirrors the tabs' visibility gating)
-  const autoplay = embla.plugins().autoplay;
+  // Pause autoplay while off-screen (mirrors the tabs' visibility gating).
+  // `plugins()` is undefined when Embla is inactive at the current breakpoint
+  // (e.g. a `data-carousel-stack` slider on mobile), so guard the access.
+  const autoplay = embla.plugins()?.autoplay;
   if (autoplay && "IntersectionObserver" in window) {
     new IntersectionObserver(
       (entries) => entries.forEach((e) => (e.isIntersecting ? autoplay.play() : autoplay.stop())),
@@ -117,7 +126,14 @@ function setupCarousel(root) {
 }
 
 export function initCarousels(root = document) {
-  qsa(root, "[data-carousel]").forEach(setupCarousel);
+  // Isolate each carousel so one failing slider can't halt the whole boot.
+  qsa(root, "[data-carousel]").forEach((el) => {
+    try {
+      setupCarousel(el);
+    } catch (err) {
+      console.error("[el] carousel init failed", el, err);
+    }
+  });
 }
 
 export default initCarousels;

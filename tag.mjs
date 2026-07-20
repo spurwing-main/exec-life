@@ -8,7 +8,7 @@
 
 import { execSync } from "node:child_process";
 
-const OWNER = "spurwing-tim";
+const OWNER = "spurwing-main";
 const PROJECT = "exec-life";
 
 const ref = process.argv[2] || execSync("git rev-parse HEAD").toString().trim();
