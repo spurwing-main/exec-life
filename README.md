@@ -36,6 +36,38 @@ exec-life/
 
 ---
 
+## Styling & JS architecture (where things live)
+
+The rule: **native Webflow owns what the Style panel can hold; embeds own only
+what it can't; JS owns behaviour, never presentation.** Concerns are grouped by
+what they *are*, not by which element happens to be on every page.
+
+**Variables are the single source of truth.** Colours, sizes, and type come from
+Webflow variables (`--_color---*`, `--_sizes---*`, `--_type---*`, `--_theme---*`).
+Embeds reference them (using `color-mix(… , transparent)` for alpha variants) so
+changing a variable re-themes the site — there is no raw hex in the embeds.
+
+**JS is behaviour-only.** Each module in `src/modules/` just flips a data
+attribute (`data-active`, `data-open`, `data-nav-hidden`, `data-draggable`, and
+`[disabled]` on arrows); CSS keys off those and owns every visual. No module
+injects styles.
+
+Webflow embeds are named in the Navigator so they're self-documenting:
+
+| Embed (Navigator name) | Lives in | Owns |
+|---|---|---|
+| `Global — reset` / `base` / `utilities` / `rich text` | **Header** component | Framework reset, html/body, `.u-*` utilities, rich-text spacing |
+| `Global — interactions & components` | **Header** component | All cross-section behaviour: `.button`, `.text-link`, forms, **Slider Arrow** (behaviour + both section themes), **carousel base** + **full-bleed** (`[data-carousel-bleed]`), `.arrow-circle`, nav-logo, hero-contact |
+| `Global — fluid type` | **Header** component | Root font-size clamp |
+| `Footer — CSS` | **Footer** component | Footer background + spotlight hover only |
+| `Services / Testimonials — carousel CSS`, `Who-help — tabs CSS`, `FAQ — accordion CSS`, `Services — section background` | page | That section's bespoke visuals + one `--carousel-slide-basis` var; anything shared defers to the global embed |
+
+**Carousels** are full-bleed by opt-in: add `data-carousel-bleed` to the root and
+set `--carousel-slide-basis` in the section embed. Contained carousels omit the
+attribute. The break-out math lives once, in the global embed.
+
+---
+
 ## Prerequisites
 
 - **Node 18+** and npm
