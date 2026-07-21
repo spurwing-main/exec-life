@@ -40,33 +40,11 @@ const reduceMotion = () =>
   typeof window.matchMedia === "function" &&
   window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-// Generic, behaviour-tied slider CSS — injected once for every slider on the
-// page. Section-specific visuals (scrims, dot colours) stay in the Embeds.
-function injectBaseStyles() {
-  if (document.getElementById("el-carousel-base")) return;
-  const style = document.createElement("style");
-  style.id = "el-carousel-base";
-  style.textContent = [
-    /* Grab cursor only while the slider can actually be dragged. */
-    '[data-carousel-viewport][data-draggable="true"]{cursor:grab;}',
-    '[data-carousel-viewport][data-draggable="true"]:active{cursor:grabbing;}',
-    /* No text selection or image ghost-drag while swiping. */
-    "[data-carousel-viewport]{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;}",
-    "[data-carousel-viewport] img{-webkit-user-drag:none;user-drag:none;}",
-    /* Keyboard focus visibility for the controls. */
-    "[data-carousel-arrow]:focus-visible,[data-carousel-prev]:focus-visible,[data-carousel-next]:focus-visible,[data-carousel-dot]:focus-visible{outline:2px solid currentColor;outline-offset:3px;border-radius:6px;}",
-    /* Disabled arrow at a scroll end — BEHAVIOUR only. The look (which colour
-       reads as "unavailable") is theme-specific and flips per section, so the
-       colours live in each section's Embed (.services_controls = dark theme,
-       .testi_controls = light theme), not here. We keep pointer events ON so the
-       not-allowed cursor actually shows; clicking a disabled arrow is a harmless
-       no-op (Embla can't scroll past the end). */
-    '[data-carousel-arrow][disabled],[data-carousel-arrow][aria-disabled="true"],[data-carousel-prev][disabled],[data-carousel-next][disabled]{cursor:not-allowed;}',
-    /* Visually-hidden live-region announcer. */
-    ".el-carousel-live{position:absolute!important;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0;}",
-  ].join("");
-  (document.head || document.documentElement).appendChild(style);
-}
+// Presentation for the carousels (grab/disabled cursor, no-select while
+// dragging, focus rings) lives in the site's global interactions Embed in
+// Webflow — NOT here. This module only flips the attributes those rules key off
+// (data-draggable, [disabled], data-active). Keeping the CSS in Webflow means
+// every visual is visible/editable there and there's no boot-time FOUC.
 
 function setupCarousel(root) {
   const viewport = qs(root, "[data-carousel-viewport]");
@@ -155,7 +133,7 @@ function setupCarousel(root) {
   let live = null;
   if (!autoplayOn) {
     live = document.createElement("span");
-    live.className = "el-carousel-live";
+    live.className = "u-visually-hidden"; // shared utility (Foundation embed)
     live.setAttribute("aria-live", "polite");
     live.setAttribute("aria-atomic", "true");
     root.appendChild(live);
@@ -235,7 +213,6 @@ function setupCarousel(root) {
 }
 
 export function initCarousels(root = document) {
-  injectBaseStyles();
   // Isolate each carousel so one failing slider can't halt the whole boot.
   qsa(root, "[data-carousel]").forEach((el) => {
     try {
