@@ -13,32 +13,12 @@ export function qs(root, selector) {
 }
 
 /**
- * Returns true if the element is considered visible in the layout.
- */
-export function isVisible(element) {
-  return !!(element && (element.offsetWidth || element.offsetHeight || element.getClientRects().length));
-}
-
-/** Basic element check (used by forms and other modules) */
-export function isElement(value) {
-  return value instanceof Element;
-}
-
-/**
- * CSS.escape with fallback.
- */
-export function escapeSelector(value) {
-  if (window.CSS && CSS.escape) {
-    return CSS.escape(value);
-  }
-  return String(value).replace(/'/g, "\\'");
-}
-
-/**
- * Find closest ancestor matching selector, but only if it is within the given root.
+ * Find the closest ancestor matching `selector`, but only if it stays within
+ * `root`. Used by the delegated click/keydown handlers so a listener on a
+ * section root can resolve the control that was actually activated.
  */
 export function closestWithin(root, target, selector) {
-  if (!isElement(target)) return null;
+  if (!(target instanceof Element)) return null;
   const element = target.closest(selector);
   if (!element || !root.contains(element)) return null;
   return element;
