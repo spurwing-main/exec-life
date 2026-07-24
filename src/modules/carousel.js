@@ -92,17 +92,32 @@ function setupCarousel(root) {
     });
   };
   // Arrows come from the shared "Slider Arrow" component and carry
-  // [data-carousel-arrow]. Webflow can't vary an instance's classes/attributes,
-  // so direction is resolved here: prefer explicit markers, else DOM order
-  // (first arrow = previous). We then tag prev with `is-prev` at runtime, which
-  // the CSS uses to rotate the icon 180deg.
+  // [data-carousel-arrow]. A carousel can have MORE THAN ONE control surface —
+  // e.g. Services shows header arrows on desktop and a separate footer row of
+  // arrows on mobile — so we wire EVERY arrow, not just the first pair. Direction
+  // is resolved per CONTROL GROUP (the arrows' shared parent): the first arrow in
+  // each group is "previous", the rest are "next". This works whether or not the
+  // instance carries the "previous" variant; explicit [data-carousel-prev]/-next
+  // markers still win. Prev arrows get `is-prev` (the CSS rotates the icon 180deg).
   const arrows = qsa(root, "[data-carousel-arrow]");
-  let prev = qs(root, "[data-carousel-prev]") || arrows.find((a) => a.classList.contains("is-prev"));
-  if (!prev && arrows.length) prev = arrows[0];
-  const next = qs(root, "[data-carousel-next]") || arrows.find((a) => a !== prev);
-  if (prev) prev.classList.add("is-prev");
-  wireControl(prev, () => embla.scrollPrev());
-  wireControl(next, () => embla.scrollNext());
+  const groups = new Map();
+  arrows.forEach((a) => {
+    const key = a.parentElement || root;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(a);
+  });
+  const isPrevArrow = (a) => {
+    if (a.hasAttribute("data-carousel-next")) return false;
+    if (a.hasAttribute("data-carousel-prev") || a.classList.contains("is-prev")) return true;
+    if (/prev/i.test(a.getAttribute("data-wf--slider-arrow--variant") || "")) return true;
+    const group = groups.get(a.parentElement || root) || [];
+    return group.length > 1 && group[0] === a;
+  };
+  const prevs = arrows.filter(isPrevArrow);
+  const nexts = arrows.filter((a) => !isPrevArrow(a));
+  prevs.forEach((p) => p.classList.add("is-prev"));
+  prevs.forEach((p) => wireControl(p, () => embla.scrollPrev()));
+  nexts.forEach((n) => wireControl(n, () => embla.scrollNext()));
 
   // Give non-<button> controls button semantics + an accessible name.
   const labelControl = (el, text) => {
@@ -113,8 +128,8 @@ function setupCarousel(root) {
     }
     if (!el.getAttribute("aria-label")) el.setAttribute("aria-label", text);
   };
-  labelControl(prev, "Previous slide");
-  labelControl(next, "Next slide");
+  prevs.forEach((p) => labelControl(p, "Previous slide"));
+  nexts.forEach((n) => labelControl(n, "Next slide"));
 
   // -- Carousel + slide semantics (WAI-ARIA APG carousel pattern) ------------
   const slideNodes = embla.slideNodes();
@@ -178,8 +193,8 @@ function setupCarousel(root) {
     });
     const canPrev = embla.canScrollPrev();
     const canNext = embla.canScrollNext();
-    setDisabled(prev, !canPrev);
-    setDisabled(next, !canNext);
+    prevs.forEach((p) => setDisabled(p, !canPrev));
+    nexts.forEach((n) => setDisabled(n, !canNext));
     // Grab cursor only when there is somewhere to scroll.
     viewport.setAttribute("data-draggable", canPrev || canNext ? "true" : "false");
     (embla.slideNodes() || []).forEach((slide, i) =>
