@@ -58,16 +58,40 @@ const MODULES = [
  * An unknown flag defaults to ON, so a module added here before an updated loader
  * ships is never silently dead.
  */
-MODULES.forEach(([name, init]) => {
-  if (el.flags && !el.flags.enabled(name)) {
-    console.info(`[el] ${name} off (feature flag)`);
-    return;
-  }
-  try {
-    init();
-  } catch (error) {
-    console.error(`[el] ${name} failed to init`, error);
-  }
-});
+function bootAll() {
+  MODULES.forEach(([name, init]) => {
+    if (el.flags && !el.flags.enabled(name)) {
+      console.info(`[el] ${name} off (feature flag)`);
+      return;
+    }
+    try {
+      init();
+    } catch (error) {
+      console.error(`[el] ${name} failed to init`, error);
+    }
+  });
 
-document.documentElement.classList.add("el-ready");
+  document.documentElement.classList.add("el-ready");
+}
+
+/**
+ * WAIT FOR THE DOM. This is not boilerplate — booting early silently breaks
+ * every module.
+ *
+ * The loader appends this bundle as `<script type="module">` the moment its
+ * LocalCan probe resolves, which can be part-way through parsing the body. A
+ * module script then runs as soon as it is fetched, so `document` may only
+ * contain the first section or two. Every module here queries the document once
+ * at init, so anything further down the page simply does not exist yet and is
+ * never wired up: on the homepage that meant one of eight headings got its reveal
+ * and the rest were skipped, and the same applies to any FAQ, carousel or tab
+ * group below the fold.
+ *
+ * It failed quietly — no error, just a page where the top works and the bottom
+ * doesn't — which is exactly the shape of bug worth a comment this long.
+ */
+if (document.readyState === "loading") {
+  document.addEventListener("DOMContentLoaded", bootAll, { once: true });
+} else {
+  bootAll();
+}

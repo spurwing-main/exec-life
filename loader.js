@@ -80,9 +80,7 @@
     tabs: { label: "Tabs", default: true },
     carousels: { label: "Carousels", default: true },
     faq: { label: "FAQ", default: true },
-    // Off: the reveal system does not work yet. Turn it on in the dev panel (or
-    // ?on=anim) to work on it. Nothing is commented out.
-    anim: { label: "Motion / reveals", default: false },
+    anim: { label: "Motion / reveals", default: true },
   };
 
   const el = (window.el = window.el || {});
