@@ -245,3 +245,58 @@ describe("arriving from a jump", () => {
     expect(title.hasAttribute("data-anim-state")).toBe(false);
   });
 });
+
+describe("init ordering (the fail-open guarantee)", () => {
+  it("does not leave the hide flag set if observing throws", () => {
+    // If data-anim-ready survives a failure, the CSS holds every element hidden
+    // with nothing left to release it — the worst outcome the design has.
+    vi.stubGlobal(
+      "IntersectionObserver",
+      class {
+        constructor() {
+          throw new Error("boom");
+        }
+      },
+    );
+    mount();
+
+    expect(() => initAnim()).toThrow("boom");
+    expect(document.documentElement.hasAttribute("data-anim-ready")).toBe(false);
+  });
+
+  it("arms the guard even when observing throws", () => {
+    vi.useFakeTimers();
+    vi.stubGlobal(
+      "IntersectionObserver",
+      class {
+        constructor() {
+          throw new Error("boom");
+        }
+      },
+    );
+    mount();
+    document.querySelector(".faq_title").style.opacity = "0";
+
+    expect(() => initAnim()).toThrow();
+    // The guard must still run — it is scheduled before anything can fail.
+    expect(() => vi.advanceTimersByTime(3000)).not.toThrow();
+  });
+
+  it("releases carousel/rich-text content WITHOUT tracking it for the guard", () => {
+    // These can sit below full opacity for reasons of their own (an inactive
+    // Embla slide). Tracking them would let the guard read that as stuck and
+    // disable every reveal on the page.
+    vi.useFakeTimers();
+    document.body.innerHTML = `
+      <div data-carousel-viewport><h2 data-anim="fade-up">slide</h2></div>`;
+    initAnim();
+
+    const slide = document.querySelector("h2");
+    expect(slide.getAttribute("data-anim-state")).toBe("in");
+    slide.style.opacity = "0";
+    slide.getBoundingClientRect = () => ({ top: 10, bottom: 60, height: 50 });
+
+    vi.advanceTimersByTime(3000);
+    expect(document.documentElement.hasAttribute("data-anim-panic")).toBe(false);
+  });
+});

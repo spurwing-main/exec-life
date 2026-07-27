@@ -102,15 +102,16 @@ function startObserver(root) {
       "[data-anim-group]:not([data-anim-on='load'])",
   );
 
-  // Anything inside an excluded subtree is released now — never observed.
-  const [excluded, observable] = targets.reduce(
-    ([out, keep], el) => (el.closest(EXCLUDE) ? [[...out, el], keep] : [out, [...keep, el]]),
-    [[], []],
-  );
-  excluded.forEach(reveal);
+  // Anything inside an excluded subtree is released now — never observed, and
+  // deliberately NOT tracked for the guard. These elements can legitimately sit
+  // below full opacity for reasons that have nothing to do with us (an inactive
+  // Embla slide, a decorative overlay), and the guard would read that as
+  // "revealed but still invisible" and disable every reveal on the page.
+  targets.filter((el) => el.closest(EXCLUDE)).forEach((el) => release(el, { track: false }));
+  const observable = targets.filter((el) => !el.closest(EXCLUDE));
 
   if (typeof IntersectionObserver !== "function") {
-    observable.forEach(reveal);
+    observable.forEach((el) => release(el));
     return;
   }
 
@@ -124,7 +125,7 @@ function startObserver(root) {
         // so there is nothing to animate, but they must not stay hidden.
         const passedAbove = entry.boundingClientRect.bottom < 0;
         if (!entry.isIntersecting && !passedAbove) return;
-        reveal(entry.target);
+        release(entry.target);
         observer.unobserve(entry.target);
       });
     },
@@ -172,19 +173,38 @@ function guard() {
   if (stuck) document.documentElement.setAttribute("data-anim-panic", "");
 }
 
-/** Mark an element as arrived, and remember when. */
-function reveal(el) {
-  revealedAt.set(el, performance.now());
+/**
+ * Mark an element as arrived. `track: false` releases it without recording a
+ * timestamp, which keeps it out of the guard's sample — see the note where the
+ * excluded subtrees are released.
+ */
+function release(el, { track = true } = {}) {
+  if (track) revealedAt.set(el, performance.now());
   el.setAttribute("data-anim-state", "in");
 }
 
 export function initAnim(root = document) {
   if (isAuthoringSurface()) return;
 
-  document.documentElement.setAttribute("data-anim-ready", "");
-  startObserver(root);
-
+  // ORDER MATTERS, and it is the whole fail-open guarantee.
+  //
+  // The guard is armed FIRST so it is scheduled no matter what happens next, and
+  // `data-anim-ready` — the flag that lets the CSS hide anything — goes on only
+  // once the observer is actually watching. Previously ready was set first: if
+  // startObserver threw, the CSS was already holding every element hidden, the
+  // guard had not been scheduled yet, and bundle.js's try/catch swallowed the
+  // error. Content would stay hidden forever, at precisely the point this design
+  // exists to protect. If observing fails now, the flag comes back off and the
+  // page is simply un-animated.
   setTimeout(guard, GRACE_MS);
+
+  try {
+    document.documentElement.setAttribute("data-anim-ready", "");
+    startObserver(root);
+  } catch (error) {
+    document.documentElement.removeAttribute("data-anim-ready");
+    throw error;
+  }
 }
 
 export default initAnim;
