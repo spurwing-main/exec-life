@@ -1,0 +1,230 @@
+/* =====================================================================
+   GLOBAL — MOTION                        → Webflow embed "Global — motion"
+   The reveal system. Tokens live in global-motion-tokens.css.
+
+   WHO OWNS WHAT (see README "Where things live")
+     Designer panel      resting look, AND the data-anim attributes that select
+                         what animates and define which preset it uses
+     THIS embed          all reveal presentation the panel can't express
+     src/modules/anim.js behaviour only — flips data-anim-state on arrival and
+                         guards against anything staying invisible. It touches no
+                         markup and knows no class name, duration or easing.
+
+   THE CONTRACT
+     data-anim="<preset>"      fade-up-sm | fade-up | fade-up-lg | rise |
+                               settle | fade | off
+     data-anim-group           stagger container; children reveal in order and
+                               need NO attribute of their own
+     data-anim-on="load"       play immediately instead of on scroll
+     data-anim-state="in"      set by anim.js when the element arrives
+     html[data-el-on~="anim"]  feature flag, set by loader.js
+     html[data-anim-ready]     anim.js is alive — without it nothing hides
+     html[data-anim-panic]     anim.js found something genuinely stuck
+
+   ─────────────────────────────────────────────────────────────────────
+   HOW THIS FILE IS ORGANISED, AND WHY NOT @layer
+
+   Three separate bugs here were the same bug: two rules fighting over one
+   property, the wrong one winning on specificity. A base of
+   `[data-anim]:not([data-anim="off"])` (0,2,0) silently beat every preset
+   (0,1,0), so no preset ever applied. A HOLD rule out-specified its RUN pair, so
+   elements were told to reveal and never played.
+
+   @layer looks like the fix — layer order beats specificity outright — and it was
+   tried. It does not work in a Webflow embed, for a spec reason rather than a
+   bug: UNLAYERED styles win over LAYERED ones. Webflow's framework CSS, every
+   panel style and every other embed are unlayered, so moving these rules into a
+   layer LOWERS their priority against the entire rest of the site. Measured: with
+   the apply rules inside @layer, animation-name computed to `none` on every
+   element; the identical rules outside a layer worked. Do not reintroduce it
+   unless the whole site's CSS moves into layers together.
+
+   So the ordering discipline is manual, and there are only three rules to it:
+
+   1. BASES STAY AT ONE ATTRIBUTE SELECTOR — `[data-anim]`, never
+      `[data-anim]:not(...)`. Presets are also one selector and come LATER in the
+      file, which is what makes them win. Do not add a :not() to a base, and do
+      not move Presets above Base. `off` is excluded in the apply rules instead.
+
+   2. INERT SECTIONS NEED NO GATE. Base, Presets and Stagger set custom
+      properties only — nothing visible — so they carry no `html[...]` prefix.
+      That prefix used to be repeated on six rules at ~100 characters each, which
+      is where the specificity accidents came from. It now appears once.
+
+   3. ONLY THE APPLY BLOCK CHANGES WHAT YOU SEE, so every kill switch lives in
+      its selector: reduced-motion, the feature flag, the liveness flag, the
+      panic switch, and the two authoring surfaces.
+   ───────────────────────────────────────────────────────────────────── */
+
+/* == Keyframes == */
+/* Opacity is always a SEPARATE animation on a linear curve. Perceived contrast
+   change is non-linear — a fade looks "arrived" at ~30-40% alpha — so running
+   opacity on the transform's ease-out front-loads the reveal twice. Linear
+   opacity lags the transform slightly, which is what we want. Only opacity and
+   transform are ever animated: no layout properties, so no reflow and no CLS. */
+@keyframes anim-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes anim-rise {
+  from { transform: translateY(var(--anim-dist)); }
+  to { transform: none; }
+}
+
+@keyframes anim-settle {
+  from { transform: translateY(var(--anim-dist-s)) scale(.985); }
+  to { transform: none; }
+}
+
+/* == Base == */
+/* Two ways to become a reveal target:
+     [data-anim="<preset>"]   an element opting in for itself
+     [data-anim-group] > *    any child of a group, no attribute needed
+
+   The second is not a convenience. A Component instance root — every Button on
+   this site — CANNOT carry a custom attribute: instance roots take props, and no
+   prop type (textContent/string/boolean/number/altText/richText/imageAsset/link/
+   video) can set an attribute VALUE. Without the group covering its children, a
+   CTA could never animate at all.
+
+   Nested groups are excluded so they animate their own children rather than being
+   moved as one slab — otherwise cta-start_head fades from 0 while already inside
+   cta-start_card fading from 0, travelling inside a parent also travelling.
+
+   ONE attribute selector each — see note 1 in the header. */
+[data-anim],
+[data-anim-group] > *:not([data-anim]):not([data-anim-group]) {
+  --anim-names: anim-in, anim-rise;
+  --anim-eases: linear, var(--anim-ease);
+  --anim-dur: var(--anim-dur-m);
+  --anim-dist: var(--anim-dist-m);
+  --anim-index: calc(var(--anim-i) + var(--anim-bump));
+}
+
+/* --anim-play INHERITS, which is how a group releases its children: mark the
+   group and every child follows, with no extra selector. That also means it
+   LEAKS downwards, so anything owning its own start resets it. Without this,
+   revealing an outer group would start a nested group's children early. */
+[data-anim],
+[data-anim-group] {
+  --anim-play: paused;
+}
+
+/* == Presets == */
+/* ONE GESTURE, FIVE WEIGHTS. Everything rises; the only differences are how far,
+   how long, and whether opacity comes along. Hierarchy is expressed as weight,
+   not as a different kind of movement — a page where the heading wipes, the copy
+   slides and the button pops reads as three unrelated ideas.
+
+   An unrecognised preset name keeps the base defaults, so a typo degrades to a
+   plain fade-rise. It can never leave content hidden. */
+[data-anim~="fade"] {
+  --anim-names: anim-in;
+  --anim-eases: linear;
+}
+
+[data-anim~="fade-up-sm"] {
+  --anim-dist: var(--anim-dist-s);
+  --anim-dur: var(--anim-dur-s);
+}
+
+[data-anim~="fade-up-lg"] {
+  --anim-dist: var(--anim-dist-l);
+  --anim-dur: var(--anim-dur-l);
+}
+
+/* `rise` is fade-up-lg without the fade, and it exists for Largest Contentful
+   Paint. Chrome ignores fully transparent elements when picking the LCP element,
+   so fading in the hero <h1> — almost certainly the LCP candidate — pushes LCP
+   out by the length of the animation: a real Core Web Vitals cost for a
+   decorative effect. This keeps the text painted and opaque from the first frame
+   while still moving. Use it for any above-the-fold heading. */
+[data-anim~="rise"] {
+  --anim-names: anim-rise;
+  --anim-eases: var(--anim-ease);
+  --anim-dist: var(--anim-dist-l);
+  --anim-dur: var(--anim-dur-l);
+}
+
+[data-anim~="settle"] {
+  --anim-names: anim-in, anim-settle;
+}
+
+/* CTAs settle rather than rise. A button is an affordance, not copy: the small
+   scale reads as an object arriving and coming to rest, and it travels less so it
+   does not drag the eye off the heading above it. Class-based on purpose — a
+   Button instance root cannot take data-anim, so this is the only place CTAs can
+   get their own preset, and the only class name in this file. */
+[data-anim-group] > .button:not([data-anim]),
+[data-anim-group] > .text-link:not([data-anim]) {
+  --anim-names: anim-in, anim-settle;
+}
+
+/* == Stagger == */
+[data-anim-group] > *:nth-child(1) { --anim-i: 0; }
+[data-anim-group] > *:nth-child(2) { --anim-i: 1; }
+[data-anim-group] > *:nth-child(3) { --anim-i: 2; }
+[data-anim-group] > *:nth-child(4) { --anim-i: 3; }
+[data-anim-group] > *:nth-child(5) { --anim-i: 4; }
+[data-anim-group] > *:nth-child(6) { --anim-i: 5; }
+[data-anim-group] > *:nth-child(7) { --anim-i: 6; }
+[data-anim-group] > *:nth-child(8) { --anim-i: 7; }
+[data-anim-group] > *:nth-child(n+9) { --anim-i: 8; }
+
+/* THE HEADING BUMP, and the number is derived, not taste. What the eye reads as
+   order is which element comes to REST last, not which starts first. A heading
+   runs --anim-dur-l and body copy --anim-dur-m, so anything following it must be
+   pushed by at least the difference:
+       bump = (0.9 - 0.8) / 0.05 = 2 steps
+   At 1 the copy landed at 0.95s against the heading's 0.95s — dead level, so they
+   arrived together and the hierarchy read flat. Recompute if those three tokens
+   move. Keyed on both long presets, since `rise` shares the duration. */
+[data-anim-group] > :is([data-anim~="fade-up-lg"], [data-anim~="rise"]) ~ * {
+  --anim-bump: 2;
+}
+
+/* == Apply == */
+/* The one block that changes what you see, so every kill switch is in its
+   selector. Nested so the gate is written once rather than six times.
+
+   LONGHANDS, NOT THE `animation` SHORTHAND — load-bearing. --anim-names and
+   --anim-eases are comma-separated LISTS (opacity and transform animate as two
+   animations with two different curves, deliberately). In the shorthand a comma
+   separates whole animations, so substituting a list yields
+   `animation: anim-in, anim-rise 0.9s linear, cubic-bezier(…) …`, which fails to
+   parse, becomes invalid at computed-value time, and resolves animation-name to
+   `none` — every reveal on the site silently stops. Measured, not guessed. */
+@media (prefers-reduced-motion: no-preference) {
+  html[data-el-on~="anim"]:not([data-anim-panic]):not(.wf-design-mode):not(.w-editor) {
+    /* Scroll-triggered. Also gated on [data-anim-ready], which only anim.js
+       sets, so with no JS nothing is ever hidden. */
+    &[data-anim-ready] :is([data-anim]:not([data-anim="off"]):not([data-anim-on="load"]),
+        [data-anim-group] > *:not([data-anim]):not([data-anim-group])) {
+      animation-name: var(--anim-names);
+      animation-duration: var(--anim-dur);
+      animation-timing-function: var(--anim-eases);
+      animation-fill-mode: both;
+      animation-delay: calc(var(--anim-index) * var(--anim-stagger));
+      animation-play-state: var(--anim-play);
+    }
+
+    /* Load-triggered (the home hero). No liveness gate and no state — it plays
+       immediately, so there is nothing for JS to release. */
+    & [data-anim-on="load"]:not([data-anim="off"]) {
+      animation-name: var(--anim-names);
+      animation-duration: var(--anim-dur);
+      animation-timing-function: var(--anim-eases);
+      animation-fill-mode: both;
+      animation-delay: calc(var(--anim-index) * var(--anim-stagger));
+      animation-play-state: running;
+    }
+  }
+}
+
+/* == State == */
+/* The whole of what anim.js drives. One attribute selector more than the base's
+   `paused` reset, so it wins without any specificity argument. */
+[data-anim-state="in"] {
+  --anim-play: running;
+}
