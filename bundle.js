@@ -10,7 +10,8 @@ import { initTabs } from "./src/modules/tabs.js";
 import { initNav } from "./src/modules/nav.js";
 import { initCarousels } from "./src/modules/carousel.js";
 import { initFaq } from "./src/modules/faq.js";
-import { initAnim } from "./src/modules/anim.js";
+// DISABLED — motion system turned off pending investigation (see anim.js)
+// import { initAnim } from "./src/modules/anim.js";
 
 const el = (window.el = window.el || {});
 el.functions = el.functions || {};
@@ -23,7 +24,7 @@ el.functions.initTabs = initTabs;
 el.functions.initNav = initNav;
 el.functions.initCarousels = initCarousels;
 el.functions.initFaq = initFaq;
-el.functions.initAnim = initAnim;
+// el.functions.initAnim = initAnim;
 
 /**
  * Boot each module in isolation.
@@ -42,7 +43,7 @@ function boot(name, fn) {
   }
 }
 
-boot("anim", initAnim);
+// boot("anim", initAnim);   // DISABLED
 boot("tabs", initTabs);
 boot("nav", initNav);
 boot("carousels", initCarousels);
