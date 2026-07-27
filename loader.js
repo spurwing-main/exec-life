@@ -84,14 +84,12 @@
 
   // -- resolve config --------------------------------------------------------
   const devEnabled = store.get(KEYS.devEnabled) === "true";
-  const isDevHost = /^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname) || /\.webflow\.io$/.test(location.hostname);
+  const isDevHost = /\.webflow\.io$/.test(location.hostname);
 
   const devParam = param("dev") || param("mode");
-  let devMode;
-  if (devParam) devMode = /^(1|true|dev|on)$/i.test(devParam);
-  else devMode = devEnabled || isDevHost || Boolean(param("env") || param("local") || param("commit"));
+  const devMode = isDevHost || (devParam && /^(1|true|dev|on)$/i.test(devParam));
 
-  const persisted = (k) => (devEnabled ? store.get(k) : null);
+  const persisted = (k) => (devMode ? store.get(k) : null);
 
   // Read owner/project/commit from this loader's own tag URL, e.g.
   //   https://cdn.jsdelivr.net/gh/<owner>/<project>@<commit>/loader.js
