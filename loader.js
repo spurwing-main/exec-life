@@ -19,7 +19,8 @@
 // Resolution order (first match wins):
 //   1. URL params      ?env=local | ?env=live | ?commit=<sha> | ?local=<url>
 //                      ?dev (bare) | ?dev=1 → dev on + panel;  ?dev=0 → force off
-//   2. Persisted dev   localStorage el_dev_enabled === "true" (+ el_env / el_local / el_commit)
+//                      ?on=anim | ?off=anim,faq → feature flags for this pageview
+//   2. Persisted dev   sessionStorage el_env (+ el_flags for feature toggles)
 //   3. Auto-probe      on dev hosts (localhost / *.webflow.io) or when dev is on:
 //                      quietly check if LocalCan is up and switch to it, else CDN.
 //   4. Default         live → the bundle from this loader's own commit.
@@ -56,6 +57,32 @@
   // they were ever actually used as.
   const KEYS = {
     env: "el_env",
+    flags: "el_flags",
+  };
+
+  // -- feature flags ---------------------------------------------------------
+  // ONE registry for every switchable feature. It lives in the loader, not the
+  // bundle, because the loader runs FIRST: it can set the CSS gate before the
+  // bundle (or a failed bundle) has any say, and the dev panel can toggle a
+  // CSS-only feature even when no JS module is involved.
+  //
+  // Each feature gets two things:
+  //   html[data-el-on~="<name>"]   the CSS gate. Embeds must gate every rule
+  //                                that applies (not merely defines) styles on
+  //                                this. That is what makes a feature switchable
+  //                                WITHOUT commenting CSS out — see README.
+  //   el.flags.enabled("<name>")   the JS gate. bundle.js skips disabled modules.
+  //
+  // `default: false` ships a feature dormant: the code is live and reviewable,
+  // it just does nothing until someone flips it on.
+  const FEATURES = {
+    nav: { label: "Nav", default: true },
+    tabs: { label: "Tabs", default: true },
+    carousels: { label: "Carousels", default: true },
+    faq: { label: "FAQ", default: true },
+    // Off: the reveal system does not work yet. Turn it on in the dev panel (or
+    // ?on=anim) to work on it. Nothing is commented out.
+    anim: { label: "Motion / reveals", default: false },
   };
 
   const el = (window.el = window.el || {});
@@ -153,6 +180,60 @@
   // steering which bundle loads, the panel shows so you can see it and reset.
   const hasOverride = !!(envOverride || param("commit") || param("local"));
 
+  // -- resolve flags ---------------------------------------------------------
+  // Precedence per feature: ?on= / ?off= → persisted → registry default.
+  //   ?off=anim,faq      turn off for this pageview
+  //   ?on=anim           turn on for this pageview
+  // Persisted overrides use sessionStorage for the same reason as `env`: a flag
+  // set weeks ago in localStorage silently changing what a page does is close to
+  // impossible to spot. Session scope keeps the useful half.
+  const flagOverrides = (() => {
+    const out = {};
+    const parse = (raw) =>
+      (raw || "")
+        .split(/[,\s]+/)
+        .map((s) => s.trim())
+        .filter(Boolean);
+
+    // Persisted first, so URL params win over it.
+    parse(store.get(KEYS.flags)).forEach((entry) => {
+      const [name, value] = entry.split(":");
+      if (name in FEATURES) out[name] = value !== "0";
+    });
+    parse(param("off")).forEach((name) => {
+      if (name in FEATURES) out[name] = false;
+    });
+    parse(param("on")).forEach((name) => {
+      if (name in FEATURES) out[name] = true;
+    });
+    return out;
+  })();
+
+  const flagState = Object.fromEntries(
+    Object.entries(FEATURES).map(([name, def]) => [
+      name,
+      { on: name in flagOverrides ? flagOverrides[name] : def.default, overridden: name in flagOverrides, label: def.label },
+    ])
+  );
+
+  el.flags = {
+    all: flagState,
+    enabled: (name) => flagState[name]?.on ?? true, // unknown feature → on, so a
+    // module added before this loader ships is never silently dead.
+    overridden: Object.keys(flagOverrides).length > 0,
+  };
+
+  // The CSS gate, set synchronously — before the bundle, and before paint when
+  // the loader tag sits in <head>. Everything is OFF unless it is listed here,
+  // which is what stops an embed hiding content it shouldn't.
+  root.setAttribute(
+    "data-el-on",
+    Object.entries(flagState)
+      .filter(([, s]) => s.on)
+      .map(([name]) => name)
+      .join(" ")
+  );
+
   const cdnSrc = `https://cdn.jsdelivr.net/gh/${owner}/${project}@${commit}/dist/bundle.js`;
   const localSrc = `${localBase}/bundle.js`;
 
@@ -174,7 +255,7 @@
     const showPanel =
       devFlag === false
         ? false
-        : devFlag === true || hasOverride || (isDevHost && source.localUp === true);
+        : devFlag === true || hasOverride || el.flags.overridden || (isDevHost && source.localUp === true);
     if (showPanel) mountPanel(source);
   });
 
@@ -269,6 +350,18 @@
         background:rgba(255,255,255,.06);color:#e8eaf0;font:inherit;padding:3px 8px;cursor:pointer}
       [data-el-reset]:hover{background:rgba(255,255,255,.12)}
       [data-el-scope]{color:#9aa0b0;text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+      [data-el-flags]{border-top:1px solid rgba(255,255,255,.10);margin:10px -12px 9px;padding:9px 12px 0}
+      [data-el-flags-title]{font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:#9aa0b0;margin-bottom:6px}
+      [data-el-flag]{display:flex;align-items:center;gap:7px;padding:3px 0;cursor:pointer;font-size:11px;color:#c4c8d4}
+      [data-el-flag]:hover{color:#fff}
+      [data-el-sw]{position:relative;flex:none;width:26px;height:15px;border-radius:99px;
+        background:rgba(255,255,255,.14);transition:background .14s}
+      [data-el-sw]::after{content:"";position:absolute;top:2px;left:2px;width:11px;height:11px;border-radius:50%;
+        background:#e8eaf0;transition:transform .14s}
+      [data-el-flag][aria-pressed="true"] [data-el-sw]{background:#37d67a}
+      [data-el-flag][aria-pressed="true"] [data-el-sw]::after{transform:translateX(11px)}
+      [data-el-flag-name]{flex:1}
+      [data-el-flag][data-overridden="true"] [data-el-flag-name]::after{content:"•";color:#f5a623;margin-left:5px;font-weight:700}
     `;
     document.head.appendChild(style);
 
@@ -296,6 +389,20 @@
           <span>source</span><b title="${source.url}">${source.kind === "local" ? localBase : "jsDelivr"}</b>
           <span>commit</span><b>${shortCommit}</b>
         </div>
+        <div data-el-flags>
+          <div data-el-flags-title>Modules</div>
+          ${Object.entries(el.flags.all)
+            .map(
+              ([name, st]) => `
+            <div data-el-flag data-flag="${name}" role="button" tabindex="0"
+                 aria-pressed="${st.on}" data-overridden="${st.overridden}"
+                 title="${st.overridden ? "overridden for this tab" : "registry default"}">
+              <span data-el-sw></span>
+              <span data-el-flag-name>${st.label}</span>
+            </div>`
+            )
+            .join("")}
+        </div>
         <div data-el-persist>
           <button data-el-reset type="button">Reset overrides</button>
           <span data-el-scope>${envOverride ? "override · this tab only" : "no override"}</span>
@@ -316,12 +423,49 @@
       });
     });
 
+    // Toggle a module → persist for this tab + reload. A reload (rather than
+    // calling the module live) is deliberate: half these features hide things
+    // with CSS before JS runs, so only a fresh pageview shows the real result.
+    const writeFlags = () => {
+      const entries = Object.entries(el.flags.all)
+        .filter(([, st]) => st.overridden)
+        .map(([name, st]) => `${name}:${st.on ? "1" : "0"}`);
+      if (entries.length) store.set(KEYS.flags, entries.join(","));
+      else store.del(KEYS.flags);
+    };
+
+    const toggleFlag = (row) => {
+      const name = row.getAttribute("data-flag");
+      const st = el.flags.all[name];
+      if (!st) return;
+      const next = !st.on;
+      // Back to the registry default → stop overriding it, rather than pinning
+      // the same value as an override.
+      st.overridden = next !== FEATURES[name].default;
+      st.on = next;
+      writeFlags();
+      const url = new URL(location.href);
+      ["on", "off"].forEach((q) => url.searchParams.delete(q));
+      location.href = url.toString();
+    };
+
+    panel.querySelectorAll("[data-el-flag]").forEach((row) => {
+      row.addEventListener("click", () => toggleFlag(row));
+      row.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          toggleFlag(row);
+        }
+      });
+    });
+
     // Reset: drop the session override (and sweep any stale localStorage keys
     // left by an older loader), then reload clean.
     panel.querySelector("[data-el-reset]").addEventListener("click", () => {
       store.del(KEYS.env);
+      store.del(KEYS.flags);
       const url = new URL(location.href);
-      ["env", "commit", "local", "dev", "mode"].forEach((p) => url.searchParams.delete(p));
+      ["env", "commit", "local", "dev", "mode", "on", "off"].forEach((p) => url.searchParams.delete(p));
       location.href = url.toString();
     });
 

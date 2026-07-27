@@ -130,6 +130,44 @@ unrelated module throwing can never take the content down.
 set `--carousel-slide-basis` in the section embed. Contained carousels omit the
 attribute. The break-out math lives once, in the global embed.
 
+### Feature flags
+
+Every switchable feature has a flag, declared once in the `FEATURES` registry in
+[`loader.js`](loader.js). A flag gives it two switches that move together:
+
+| | Gate | Set by |
+|---|---|---|
+| **CSS** | `html[data-el-on~="<name>"]` | the loader, synchronously, before the bundle runs |
+| **JS** | `el.flags.enabled("<name>")` | consulted by `bundle.js` before booting the module |
+
+Turn one off in the **dev panel** (the Modules list — click a toggle, it persists
+for the tab and reloads), or per pageview with `?off=anim,faq` / `?on=anim`.
+Precedence is URL → persisted (sessionStorage, so it can't outlive the tab) →
+registry default. An overridden flag shows an amber dot in the panel, so a flag
+that is silently steering the page is always visible.
+
+`default: false` ships a feature **dormant** — the code is live and reviewable, it
+just does nothing until someone flips it on. That is how `anim` currently sits.
+
+**The rule that keeps CSS out of this:** inside an embed, separate
+
+- **definitions** — custom properties, `@keyframes`, preset values. These have no
+  visible effect on their own, so they need no gate.
+- **application rules** — anything that actually changes what you see, especially
+  anything that *hides* something. **Every one of these gates on the flag.**
+
+Follow that and a feature is disabled by flipping a toggle, never by commenting
+CSS out — and reading the file always shows you the real code rather than a
+commented-out fossil. Grouping the application rules together under one banner
+comment in the embed makes the gated set obvious at a glance.
+
+`anim` is the worked example: it carries **two** gates, and they do different
+jobs. `html[data-el-on~="anim"]` is the flag — is this on at all. `[data-anim-ready]`
+is liveness, set only by the module once it is actually running. Both are
+required, which is what keeps it fail-open: flag on but bundle dead reveals
+everything rather than hiding it. Verified in the browser across all four
+combinations; only *flag on + JS alive* ever hides anything.
+
 ### Shipping order
 
 The CSS lives in Webflow and the JS lives here, so a release touches both. Either
