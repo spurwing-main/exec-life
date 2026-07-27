@@ -101,7 +101,17 @@ function buildMask(el) {
  * is fully on screen so the motion is seen rather than finished off-screen.
  */
 function startObserver(root) {
-  const targets = qsa(root, "[data-anim]:not([data-anim='off']):not([data-anim-on='load'])");
+  // Groups are observed as well as individually tagged elements. A group's
+  // children reveal WITHOUT an attribute of their own (that is what lets a Button
+  // component instance animate at all — instance roots cannot take custom
+  // attributes), so there is nothing on the child for this module to flip. The
+  // CSS therefore reads the state off the group, and the group is what has to be
+  // watched.
+  const targets = qsa(
+    root,
+    "[data-anim]:not([data-anim='off']):not([data-anim-on='load'])," +
+      "[data-anim-group]:not([data-anim-on='load'])",
+  );
 
   if (typeof IntersectionObserver !== "function") {
     targets.forEach(reveal);

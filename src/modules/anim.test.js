@@ -117,9 +117,27 @@ describe("fail open", () => {
       <div data-anim="off">opted out</div>`);
     initAnim();
 
-    expect(observed).toHaveLength(4);
+    // 4 tagged children + the group itself
+    expect(observed).toHaveLength(5);
     expect(observed.some((el) => el.getAttribute("data-anim-on") === "load")).toBe(false);
     expect(observed.some((el) => el.getAttribute("data-anim") === "off")).toBe(false);
+  });
+
+  it("observes the GROUP too, so children with no attribute of their own reveal", () => {
+    // A Button component instance root cannot carry data-anim, so it relies on
+    // the group's state. If the group is not observed, such children never run.
+    document.body.innerHTML = `
+      <div class="cta-start_card" data-anim-group>
+        <div class="cta-start_head" data-anim-group><h2 data-anim="wipe">Heading</h2></div>
+        <p class="cta-start_text">copy</p>
+        <div class="cta-start_actions"><div class="button">CTA</div></div>
+      </div>`;
+    initAnim();
+
+    const outer = document.querySelector(".cta-start_card");
+    const inner = document.querySelector(".cta-start_head");
+    expect(observed).toContain(outer);
+    expect(observed).toContain(inner);
   });
 
   /**
