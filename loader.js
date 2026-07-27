@@ -47,33 +47,49 @@
     unhideTimeout: 4000, // ms safety net so content never stays hidden
   };
 
+  // ONE persisted key. There used to be four; an audit found three were dead:
+  //   el_dev_enabled — written, but never consulted by devMode/showPanel. Its
+  //                    "Keep dev mode on this browser" checkbox did nothing.
+  //   el_local       — read at localBase, but NOTHING ever wrote it.
+  //   el_commit      — read at commit, but NOTHING ever wrote it.
+  // `?local=` / `?commit=` remain as per-pageview URL overrides, which is all
+  // they were ever actually used as.
   const KEYS = {
-    devEnabled: "el_dev_enabled",
     env: "el_env",
-    local: "el_local",
-    commit: "el_commit",
   };
 
   const el = (window.el = window.el || {});
   el.functions = el.functions || {};
 
   // -- storage helpers -------------------------------------------------------
+  // sessionStorage, NOT localStorage. The env override needs to survive
+  // navigation between pages (query params don't), but it must NOT outlive the
+  // tab: a sticky localStorage flag set weeks ago silently changes which bundle
+  // a staging page runs, which is near-impossible to spot. Session scope keeps
+  // the useful half and drops the footgun.
   const store = {
     get(k) {
       try {
-        return localStorage.getItem(k);
+        return sessionStorage.getItem(k);
       } catch {
         return null;
       }
     },
     set(k, v) {
       try {
-        localStorage.setItem(k, v);
+        sessionStorage.setItem(k, v);
       } catch {}
     },
     del(k) {
       try {
-        localStorage.removeItem(k);
+        sessionStorage.removeItem(k);
+      } catch {}
+      // Best-effort sweep of the retired localStorage keys so anyone carrying
+      // stale state from an older loader gets cleaned up on first Reset.
+      try {
+        ["el_env", "el_dev_enabled", "el_local", "el_commit"].forEach((old) =>
+          localStorage.removeItem(old)
+        );
       } catch {}
     },
   };
@@ -100,7 +116,6 @@
   };
 
   // -- resolve config --------------------------------------------------------
-  const devEnabled = store.get(KEYS.devEnabled) === "true";
   const isDevHost = /\.webflow\.io$/.test(location.hostname);
 
   // null = no opinion → fall back to the host check. An explicit ?dev=0 now wins
@@ -126,12 +141,17 @@
 
   const owner = self?.owner || DEFAULTS.owner;
   const project = self?.project || DEFAULTS.project;
-  const commit = param("commit") || persisted(KEYS.commit) || self?.ref || DEFAULTS.commit;
-  const localBase = (param("local") || persisted(KEYS.local) || DEFAULTS.localBase).replace(/\/$/, "");
+  const commit = param("commit") || self?.ref || DEFAULTS.commit;
+  const localBase = (param("local") || DEFAULTS.localBase).replace(/\/$/, "");
 
   // env: "local" | "live" | "auto"  (auto = probe LocalCan, pick whatever is up)
-  let env = param("env") || persisted(KEYS.env);
+  const envOverride = param("env") || persisted(KEYS.env);
+  let env = envOverride;
   if (env !== "local" && env !== "live") env = devMode ? "auto" : "live";
+
+  // A persisted override must never be silently in effect — if session state is
+  // steering which bundle loads, the panel shows so you can see it and reset.
+  const hasOverride = !!(envOverride || param("commit") || param("local"));
 
   const cdnSrc = `https://cdn.jsdelivr.net/gh/${owner}/${project}@${commit}/dist/bundle.js`;
   const localSrc = `${localBase}/bundle.js`;
@@ -149,9 +169,12 @@
     inject(source);
     // An explicit ?dev asks for the panel outright — even when LocalCan is down
     // and we fell back to the CDN, because seeing "live / local unreachable" IS
-    // the diagnostic. An explicit ?dev=0 suppresses it everywhere.
+    // the diagnostic. An explicit ?dev=0 suppresses it everywhere, including
+    // over an active override (the documented escape hatch).
     const showPanel =
-      devFlag === false ? false : devFlag === true || (isDevHost && source.localUp === true);
+      devFlag === false
+        ? false
+        : devFlag === true || hasOverride || (isDevHost && source.localUp === true);
     if (showPanel) mountPanel(source);
   });
 
@@ -240,8 +263,12 @@
       [data-el-meta]{display:grid;grid-template-columns:auto 1fr;gap:2px 8px;margin-bottom:10px;
         font-size:11px;color:#9aa0b0}
       [data-el-meta] b{color:#e8eaf0;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-      [data-el-persist]{display:flex;align-items:center;gap:7px;cursor:pointer;font-size:11px;color:#c4c8d4}
-      [data-el-persist] input{accent-color:#4c8dff}
+      [data-el-persist]{display:flex;align-items:center;justify-content:space-between;gap:8px;
+        font-size:11px;color:#c4c8d4}
+      [data-el-reset]{appearance:none;border:1px solid rgba(255,255,255,.14);border-radius:6px;
+        background:rgba(255,255,255,.06);color:#e8eaf0;font:inherit;padding:3px 8px;cursor:pointer}
+      [data-el-reset]:hover{background:rgba(255,255,255,.12)}
+      [data-el-scope]{color:#9aa0b0;text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
     `;
     document.head.appendChild(style);
 
@@ -269,18 +296,18 @@
           <span>source</span><b title="${source.url}">${source.kind === "local" ? localBase : "jsDelivr"}</b>
           <span>commit</span><b>${shortCommit}</b>
         </div>
-        <label data-el-persist>
-          <input type="checkbox" ${devEnabled ? "checked" : ""}/> Keep dev mode on this browser
-        </label>
+        <div data-el-persist>
+          <button data-el-reset type="button">Reset overrides</button>
+          <span data-el-scope>${envOverride ? "override · this tab only" : "no override"}</span>
+        </div>
       </div>
     `;
     root.appendChild(panel);
 
-    // switch env → persist + reload
+    // switch env → persist (for this tab) + reload
     panel.querySelectorAll("[data-env]").forEach((btn) => {
       btn.addEventListener("click", () => {
         const next = btn.getAttribute("data-env");
-        store.set(KEYS.devEnabled, "true"); // switching implies dev
         if (next === "auto") store.del(KEYS.env);
         else store.set(KEYS.env, next);
         const url = new URL(location.href);
@@ -289,16 +316,13 @@
       });
     });
 
-    // persist toggle
-    panel.querySelector("[data-el-persist] input").addEventListener("change", (e) => {
-      if (e.target.checked) {
-        store.set(KEYS.devEnabled, "true");
-      } else {
-        store.del(KEYS.devEnabled);
-        store.del(KEYS.env);
-        store.del(KEYS.local);
-        store.del(KEYS.commit);
-      }
+    // Reset: drop the session override (and sweep any stale localStorage keys
+    // left by an older loader), then reload clean.
+    panel.querySelector("[data-el-reset]").addEventListener("click", () => {
+      store.del(KEYS.env);
+      const url = new URL(location.href);
+      ["env", "commit", "local", "dev", "mode"].forEach((p) => url.searchParams.delete(p));
+      location.href = url.toString();
     });
 
     // hide for this pageview
