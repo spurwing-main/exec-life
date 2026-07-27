@@ -122,29 +122,70 @@ describe("fail open", () => {
     expect(observed.some((el) => el.getAttribute("data-anim") === "off")).toBe(false);
   });
 
-  it("panics (disabling all motion) if something is still invisible on screen", () => {
+  /**
+   * The guard's job is narrow on purpose. Its first version asked "is anything on
+   * screen still invisible?" — a wider region than the observer's -10% trigger, so
+   * an element resting in that band was correctly still held, got read as stuck,
+   * and tripped the panic. Panic kills every scroll reveal site-wide, so the whole
+   * page below the hero went instant. These three cases pin the contract down.
+   */
+  function observerHarness() {
+    let callback;
+    vi.stubGlobal(
+      "IntersectionObserver",
+      class {
+        constructor(cb) {
+          callback = cb;
+        }
+        observe() {}
+        unobserve() {}
+      },
+    );
+    return () => callback;
+  }
+
+  it("panics when an element it already revealed is STILL invisible", () => {
     vi.useFakeTimers();
+    const getCb = observerHarness();
     mount();
     initAnim();
 
-    // jsdom has no layout, so give the heading a measurable box and no opacity.
     const title = document.querySelector(".faq_title");
-    title.getBoundingClientRect = () => ({ top: 10, bottom: 60, height: 50 });
+    getCb()([{ target: title, isIntersecting: true, boundingClientRect: { bottom: 400 } }]);
+    // CSS missing/overridden: it was told to reveal and never did.
     title.querySelector("[data-anim-line]").style.opacity = "0";
 
     vi.advanceTimersByTime(3000);
     expect(document.documentElement.hasAttribute("data-anim-panic")).toBe(true);
   });
 
-  it("does not panic when everything on screen is visible", () => {
+  it("does NOT panic over an element that was never revealed — it is waiting, not stuck", () => {
     vi.useFakeTimers();
+    observerHarness();
     mount();
     initAnim();
-    document.querySelectorAll("[data-anim]").forEach((el) => {
-      el.getBoundingClientRect = () => ({ top: 10, bottom: 60, height: 50 });
-    });
+
+    // Held hidden, below the trigger point. This is the system working.
+    document.querySelector(".faq_title [data-anim-line]").style.opacity = "0";
+    document.querySelector(".faq_text").style.opacity = "0";
 
     vi.advanceTimersByTime(3000);
+    expect(document.documentElement.hasAttribute("data-anim-panic")).toBe(false);
+  });
+
+  it("does NOT panic over a reveal that is still mid-animation", () => {
+    vi.useFakeTimers();
+    const getCb = observerHarness();
+    mount();
+    initAnim();
+
+    // Revealed just before the guard runs, so it is legitimately part-way through.
+    vi.advanceTimersByTime(2400);
+    const title = document.querySelector(".faq_title");
+    getCb()([{ target: title, isIntersecting: true, boundingClientRect: { bottom: 400 } }]);
+    title.querySelector("[data-anim-line]").style.opacity = "0.3";
+
+    vi.advanceTimersByTime(600);
     expect(document.documentElement.hasAttribute("data-anim-panic")).toBe(false);
   });
 });

@@ -46,8 +46,10 @@
  *   - an unknown preset name falls through to the base preset in CSS rather
  *     than hiding forever;
  *   - with no IntersectionObserver, everything is revealed immediately;
- *   - `guard()` sets `html[data-anim-panic]` (which disables all of it) if
- *     anything is still invisible while on screen after a grace period;
+ *   - `guard()` sets `html[data-anim-panic]` (which disables all of it) if an
+ *     element it already revealed is STILL invisible once its animation has had
+ *     time to finish — see the note on `guard`, whose first version was too
+ *     eager and disabled the whole page;
  *   - it does nothing at all in the Designer canvas or the Editor, so a client
  *     editing copy never sees hidden text.
  */
@@ -102,7 +104,7 @@ function startObserver(root) {
   const targets = qsa(root, "[data-anim]:not([data-anim='off']):not([data-anim-on='load'])");
 
   if (typeof IntersectionObserver !== "function") {
-    targets.forEach((el) => el.setAttribute("data-anim-state", "in"));
+    targets.forEach(reveal);
     return;
   }
 
@@ -116,7 +118,7 @@ function startObserver(root) {
         // so there is nothing to animate, but they must not stay hidden.
         const passedAbove = entry.boundingClientRect.bottom < 0;
         if (!entry.isIntersecting && !passedAbove) return;
-        entry.target.setAttribute("data-anim-state", "in");
+        reveal(entry.target);
         observer.unobserve(entry.target);
       });
     },
@@ -126,20 +128,44 @@ function startObserver(root) {
   targets.forEach((el) => observer.observe(el));
 }
 
+/** When each element was told to reveal, so the guard can tell late from stuck. */
+const revealedAt = new WeakMap();
+
+/** Longest a reveal can legitimately still be running: worst delay + duration. */
+const SETTLED_MS = 1500;
+
 /**
- * Last line of defence. If anything tagged is on screen and still invisible once
- * the grace period is up, the mechanism has failed somewhere we did not predict
- * — give up on the animation site-wide rather than withhold content.
+ * Last line of defence, and it has to be careful about WHAT it calls stuck.
+ *
+ * The first version asked "is anything on screen still invisible?", using
+ * `top < innerHeight`. That is a wider region than the observer's trigger, which
+ * sits at `rootMargin: -10%` — so an element resting in that bottom 10% band was
+ * correctly still held, got read as stuck, and tripped the panic. Panic disables
+ * every scroll reveal site-wide, while the hero (a load rule, no panic gate) kept
+ * animating. Symptom: hero fine, everything below it instant. On a long page
+ * something is almost always in that band, so it fired nearly every time.
+ *
+ * The real stuck condition is narrower: an element this module has ALREADY told
+ * to reveal, whose animation has had time to finish, that is still invisible.
+ * That only happens if the CSS is missing, overridden, or gated wrong — which is
+ * exactly what the panic switch is for. An element that has not been triggered
+ * yet is not stuck; it is waiting, and that is the system working.
  */
 function guard() {
-  const stuck = qsa(document, "[data-anim]:not([data-anim='off'])").some((el) => {
-    const box = el.getBoundingClientRect();
-    const onScreen = box.top < window.innerHeight && box.bottom > 0 && box.height > 0;
-    if (!onScreen) return false;
+  const now = performance.now();
+  const stuck = qsa(document, "[data-anim-state='in']").some((el) => {
+    const since = revealedAt.get(el);
+    if (since === undefined || now - since < SETTLED_MS) return false;
     const target = el.querySelector("[data-anim-line]") || el;
     return Number(getComputedStyle(target).opacity) < 0.9;
   });
   if (stuck) document.documentElement.setAttribute("data-anim-panic", "");
+}
+
+/** Mark an element as arrived, and remember when. */
+function reveal(el) {
+  revealedAt.set(el, performance.now());
+  el.setAttribute("data-anim-state", "in");
 }
 
 export function initAnim(root = document) {
