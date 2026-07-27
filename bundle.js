@@ -10,6 +10,7 @@ import { initTabs } from "./src/modules/tabs.js";
 import { initNav } from "./src/modules/nav.js";
 import { initCarousels } from "./src/modules/carousel.js";
 import { initFaq } from "./src/modules/faq.js";
+import { initAnim } from "./src/modules/anim.js";
 
 const el = (window.el = window.el || {});
 el.functions = el.functions || {};
@@ -22,11 +23,29 @@ el.functions.initTabs = initTabs;
 el.functions.initNav = initNav;
 el.functions.initCarousels = initCarousels;
 el.functions.initFaq = initFaq;
+el.functions.initAnim = initAnim;
 
-// Boot
-initTabs();
-initNav();
-initCarousels();
-initFaq();
+/**
+ * Boot each module in isolation.
+ *
+ * Every module here is independent, so one throwing must not stop the rest. That
+ * matters most for `initAnim`: the reveal system briefly hides content and then
+ * reveals it, so if an unrelated module (a carousel on a page that has none, say)
+ * threw first, headings would stay hidden site-wide. Hence the try/catch, and
+ * hence anim boots FIRST.
+ */
+function boot(name, fn) {
+  try {
+    fn();
+  } catch (error) {
+    console.error(`[el] ${name} failed to init`, error);
+  }
+}
+
+boot("anim", initAnim);
+boot("tabs", initTabs);
+boot("nav", initNav);
+boot("carousels", initCarousels);
+boot("faq", initFaq);
 
 document.documentElement.classList.add("el-ready");

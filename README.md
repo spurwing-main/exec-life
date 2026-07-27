@@ -36,35 +36,107 @@ exec-life/
 
 ---
 
-## Styling & JS architecture (where things live)
+## Where things live
 
-The rule: **native Webflow owns what the Style panel can hold; embeds own only
-what it can't; JS owns behaviour, never presentation.** Concerns are grouped by
-what they *are*, not by which element happens to be on every page.
+Three layers own this site. The boundary between them is the thing to get right,
+because every ambiguity ends up as the same bug: a value defined twice, in two
+places, drifting apart.
 
-**Variables are the single source of truth.** Colours, sizes, and type come from
-Webflow variables (`--_color---*`, `--_sizes---*`, `--_type---*`, `--_theme---*`).
-Embeds reference them (using `color-mix(… , transparent)` for alpha variants) so
-changing a variable re-themes the site — there is no raw hex in the embeds.
+| Layer | Where you edit it | Owns |
+|---|---|---|
+| **1. Webflow Designer** | Style panel, Navigator, variables | The **resting look** — layout, spacing, type, colour, radii, breakpoint variants — plus **structure** and the **`data-*` attributes that declare intent** |
+| **2. Custom-code embeds** | HTML Embeds, inside Webflow | Everything **CSS can express but the panel can't**: state and attribute selectors, pseudo-elements, `nth-child`, `@keyframes`, `@media`, `@supports` |
+| **3. This repo** | `src/modules/`, shipped as `dist/bundle.js` | **Behaviour only.** Reads and writes attributes. No class names, no colours, no durations, no easings |
 
-**JS is behaviour-only.** Each module in `src/modules/` just flips a data
-attribute (`data-active`, `data-open`, `data-nav-hidden`, `data-draggable`, and
-`[disabled]` on arrows); CSS keys off those and owns every visual. No module
-injects styles.
+One test each, in order — the first that answers "yes" owns it:
 
-Webflow embeds are named in the Navigator so they're self-documenting:
+1. Can the Style panel express it in the element's resting state? → **Designer**
+2. Is it CSS, but needs a selector, keyframe or query the panel can't hold? → **embed**
+3. Does something have to be *decided at runtime*? → **repo**
+
+**The layers talk through two narrow interfaces, and nothing else:**
+
+- **`data-*` attributes** — the contract between all three. The Designer authors
+  intent (`data-anim="wipe"`, `data-carousel-bleed`, `data-faq`), CSS styles off
+  it, JS flips state onto it (`data-anim-state`, `data-open`, `data-active`,
+  `[disabled]`). No module injects a style; no embed guesses at behaviour.
+- **CSS custom properties** — the contract for values. Webflow variables
+  (`--_color---*`, `--_sizes---*`, `--_type---*`, `--_theme---*`) are the single
+  source of truth for colour, size and type; the motion tokens (`--anim-*`) are
+  the single source of truth for timing. Embeds reference them (with
+  `color-mix(…, transparent)` for alpha variants), so changing a variable
+  re-themes or re-times the site. There is no raw hex and no stray duration in
+  an embed.
+
+Consequences worth stating, because they are easy to get wrong:
+
+- A duration or easing that appears in two embeds is a bug — the second one
+  should read the token.
+- A class name that appears in a module is a bug — the module should read an
+  attribute.
+- A value hard-coded in an embed that the panel could hold is a bug — it belongs
+  on the class.
+
+### The embeds
+
+Named in the Navigator so they are self-documenting, and scoped to one concern
+each:
 
 | Embed (Navigator name) | Lives in | Owns |
 |---|---|---|
 | `Global — reset` / `base` / `utilities` / `rich text` | **Header** component | Framework reset, html/body, `.u-*` utilities, rich-text spacing |
-| `Global — interactions & components` | **Header** component | All cross-section behaviour: `.button`, `.text-link`, forms, **Slider Arrow** (behaviour + both section themes), **carousel base** + **full-bleed** (`[data-carousel-bleed]`), `.arrow-circle`, nav-logo, hero-contact |
+| `Global — motion` | **Header** component | The whole reveal system: tokens, keyframes, presets, stagger, scroll-driven + fallback paths. **The only place a reveal duration, distance or easing is defined** |
+| `Global — interactions & components` | **Header** component | Cross-section **component state**: `.button`, `.text-link`, forms, **Slider Arrow** (behaviour + both section themes), **carousel base** + full-bleed (`[data-carousel-bleed]`), `.arrow-circle`, card Ken-Burns hover, nav-logo, hero-contact. Reads the motion tokens; defines none |
 | `Global — fluid type` | **Header** component | Root font-size clamp |
 | `Footer — CSS` | **Footer** component | Footer background + spotlight hover only |
-| `Services / Testimonials — carousel CSS`, `Who-help — tabs CSS`, `FAQ — accordion CSS`, `Services — section background` | page | That section's bespoke visuals + one `--carousel-slide-basis` var; anything shared defers to the global embed |
+| `Home — hero motion` | page | The hero's stagger ORDER (`--anim-i` per element) + its one bespoke image move. Presets and timing come from `Global — motion` |
+| `Services / Testimonials — carousel CSS`, `Who-help — tabs CSS`, `FAQ — accordion CSS`, `Services — section background` | page | That section's bespoke visuals + one `--carousel-slide-basis` var; anything shared defers to a global embed |
+
+### Motion, specifically
+
+Selection and preset are **authored attributes** — an element that animates says
+so on itself, visible in the Designer:
+
+```html
+<div data-anim-group>                      <!-- stagger container -->
+  <p   data-anim="fade-up-sm">…            <!-- eyebrow: barely travels -->
+  <h2  data-anim="wipe">…                  <!-- heading: masked, the real event -->
+  <p   data-anim="fade-up">…               <!-- copy -->
+</div>
+<div data-anim="fade-up" data-anim-on="load">   <!-- plays on load, not on scroll -->
+<div data-anim="off">                           <!-- never animates -->
+```
+
+Presets: `fade`, `fade-up`, `fade-up-sm`, `settle`, `wipe`. There is no naming
+convention to learn and nothing implicit — no class-name mapping, no config list.
+
+`src/modules/anim.js` does only three things: builds the wrapper a masked wipe
+needs (it means nesting a span in a heading, which can't be authored), drives the
+time-based fallback for browsers without `animation-timeline: view()`, and guards
+against anything staying invisible. Stagger, ordering, easing and duration are
+all CSS.
+
+**Reveals fail open, by construction.** Hiding content by default would make
+every heading depend on JS succeeding, so: the scroll-driven path reveals with no
+JS at all; the fallback's hidden state is gated on `html[data-anim-ready]`, which
+only the module sets; an unknown preset degrades to a plain fade instead of
+hiding; and a guard sets `html[data-anim-panic]` — disabling all of it — if
+anything is still invisible on screen after 2.5s. Motion is also disabled outright
+in the Designer canvas and the Editor, so a client editing copy never sees hidden
+text. `bundle.js` boots each module in its own `try/catch`, with anim first, so an
+unrelated module throwing can never take the content down.
 
 **Carousels** are full-bleed by opt-in: add `data-carousel-bleed` to the root and
 set `--carousel-slide-basis` in the section embed. Contained carousels omit the
 attribute. The break-out math lives once, in the global embed.
+
+### Shipping order
+
+The CSS lives in Webflow and the JS lives here, so a release touches both. Either
+order is safe — that is deliberate, and the fail-open design is what buys it:
+publishing Webflow before deploying the bundle leaves the site un-animated, never
+hidden, and deploying the bundle before publishing leaves the JS with nothing to
+do.
 
 ---
 
