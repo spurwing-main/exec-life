@@ -6,7 +6,7 @@
  *
  *   <div data-anim-group>                    stagger container
  *     <p  data-anim="fade-up-sm">…           eyebrow — barely travels
- *     <h2 data-anim="wipe">…                 heading — masked, the one real event
+ *     <h2 data-anim="fade-up-lg">…           heading — furthest and slowest
  *     <div data-anim="fade-up">…             copy
  *     <a  data-anim="settle">…               CTA
  *   </div>
@@ -15,13 +15,18 @@
  *
  * There is no convention to learn, no class-name mapping, and nothing implicit:
  * if an element animates, the attribute is on it and you can see it in the
- * Designer. Presets are `fade`, `fade-up`, `fade-up-sm`, `settle`, `wipe`.
+ * Designer. Presets: `fade-up-sm`, `fade-up`, `fade-up-lg`, `rise`, `settle`,
+ * `fade`, `off`. A group's children reveal with no attribute at all, which is the
+ * only way a Button component instance root can animate (instance roots cannot
+ * carry custom attributes).
  *
  * WHAT THIS FILE DOES — and it is deliberately almost nothing:
- *   1. builds the wrapper a masked wipe needs (a mask cannot be authored in the
- *      Designer, since it means putting a span inside a heading),
- *   2. flips `data-anim-state="in"` when an element arrives,
- *   3. guards against anything ever staying invisible.
+ *   1. flips `data-anim-state="in"` when an element arrives,
+ *   2. guards against anything ever staying invisible.
+ * It does not touch markup. The wipe preset used to need a JS-built mask span
+ * inside every heading; that preset is gone (it cropped descenders and made the
+ * heading the one element moving differently from everything else), and with it
+ * the only reason this module ever mutated the DOM.
  * Stagger, ordering, durations, distances, easing and keyframes are all CSS, in
  * the "Global — motion" embed. This module contains no class name, no duration
  * and no easing.
@@ -57,11 +62,17 @@
 import { qsa } from "../utils/dom.js";
 
 /**
- * Subtrees where a reveal would fight something else. Everything here is a
- * structural or framework hook, never a design class name:
- *   [data-carousel-viewport] — Embla owns transforms inside it, and `overflow`
- *     makes it a scroll container, which would capture the view() timeline.
+ * Subtrees where a scroll reveal cannot work, so anything tagged inside one is
+ * revealed IMMEDIATELY rather than observed. Both are structural/framework hooks,
+ * never design class names.
+ *
+ *   [data-carousel-viewport] — a slide sitting off to the side of a carousel is
+ *     outside the viewport horizontally, so it never intersects. Observing it
+ *     would hold it hidden forever and the user would drag to an empty slide.
  *   .w-richtext — article body copy is content, not section furniture.
+ *
+ * Revealing rather than skipping matters: skipping would leave the element
+ * matching the CSS hold rule with nothing ever to release it.
  */
 const EXCLUDE = "[data-carousel-viewport], .w-richtext";
 
@@ -72,28 +83,6 @@ const GRACE_MS = 2500;
 function isAuthoringSurface() {
   const cls = document.documentElement.classList;
   return cls.contains("wf-design-mode") || cls.contains("w-editor");
-}
-
-/**
- * A masked wipe animates a block INSIDE an overflow-clipped wrapper, so the text
- * is uncovered by a moving edge rather than faded. That reads as motion because
- * it matches how occlusion works; a fade has no physical analogue.
- *
- * This is the one thing the Designer cannot express — it means nesting a span
- * inside a heading, which would also break CMS binding on that heading. Building
- * it here has a useful side effect: with no JS there is no mask, so there is no
- * hidden state either. Idempotent, so re-running after a CMS load never
- * double-wraps.
- */
-function buildMask(el) {
-  if (el.querySelector(":scope > [data-anim-mask]")) return;
-  const mask = document.createElement("span");
-  mask.setAttribute("data-anim-mask", "");
-  const line = document.createElement("span");
-  line.setAttribute("data-anim-line", "");
-  while (el.firstChild) line.appendChild(el.firstChild);
-  mask.appendChild(line);
-  el.appendChild(mask);
 }
 
 /**
@@ -113,8 +102,15 @@ function startObserver(root) {
       "[data-anim-group]:not([data-anim-on='load'])",
   );
 
+  // Anything inside an excluded subtree is released now — never observed.
+  const [excluded, observable] = targets.reduce(
+    ([out, keep], el) => (el.closest(EXCLUDE) ? [[...out, el], keep] : [out, [...keep, el]]),
+    [[], []],
+  );
+  excluded.forEach(reveal);
+
   if (typeof IntersectionObserver !== "function") {
-    targets.forEach(reveal);
+    observable.forEach(reveal);
     return;
   }
 
@@ -135,7 +131,7 @@ function startObserver(root) {
     { rootMargin: "0px 0px -10% 0px", threshold: 0 },
   );
 
-  targets.forEach((el) => observer.observe(el));
+  observable.forEach((el) => observer.observe(el));
 }
 
 /** When each element was told to reveal, so the guard can tell late from stuck. */
@@ -166,8 +162,12 @@ function guard() {
   const stuck = qsa(document, "[data-anim-state='in']").some((el) => {
     const since = revealedAt.get(el);
     if (since === undefined || now - since < SETTLED_MS) return false;
-    const target = el.querySelector("[data-anim-line]") || el;
-    return Number(getComputedStyle(target).opacity) < 0.9;
+    // A GROUP is never animated itself — its children are. Checking the group's
+    // own opacity would always read 1 and miss a whole section stuck hidden.
+    const subjects = el.hasAttribute("data-anim-group")
+      ? Array.from(el.children).filter((c) => !c.hasAttribute("data-anim-group"))
+      : [el];
+    return subjects.some((s) => Number(getComputedStyle(s).opacity) < 0.9);
   });
   if (stuck) document.documentElement.setAttribute("data-anim-panic", "");
 }
@@ -180,10 +180,6 @@ function reveal(el) {
 
 export function initAnim(root = document) {
   if (isAuthoringSurface()) return;
-
-  qsa(root, "[data-anim~='wipe']")
-    .filter((el) => !el.closest(EXCLUDE))
-    .forEach(buildMask);
 
   document.documentElement.setAttribute("data-anim-ready", "");
   startObserver(root);

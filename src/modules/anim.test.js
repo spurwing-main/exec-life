@@ -16,7 +16,7 @@ function mount(extra = "") {
   document.body.innerHTML = `
     <div class="faq_head" data-anim-group>
       <div class="faq_eyebrow" data-anim="fade-up-sm">Business insurance FAQs</div>
-      <h2 class="faq_title" data-anim="wipe">Frequently asked questions</h2>
+      <h2 class="faq_title" data-anim="fade-up-lg">Frequently asked questions</h2>
       <p class="faq_text" data-anim="fade-up">Supporting copy.</p>
       <div class="button" data-anim="settle">CTA</div>
     </div>
@@ -49,37 +49,31 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-describe("wipe mask", () => {
-  it("wraps the heading's contents in a mask + line, and never double-wraps", () => {
+describe("markup", () => {
+  it("never mutates the DOM — the mask the wipe preset needed is gone", () => {
     mount();
+    const before = document.body.innerHTML;
     initAnim();
-    initAnim();
-
-    const title = document.querySelector(".faq_title");
-    const masks = title.querySelectorAll(":scope > [data-anim-mask]");
-    expect(masks).toHaveLength(1);
-    expect(masks[0].querySelector("[data-anim-line]").textContent).toBe(
-      "Frequently asked questions",
-    );
+    expect(document.body.innerHTML).toBe(before);
   });
 
-  it("leaves the other presets' markup untouched", () => {
-    mount();
-    initAnim();
-
-    expect(document.querySelector(".faq_text").querySelector("[data-anim-mask]")).toBeNull();
-    expect(document.querySelector(".faq_text").textContent).toBe("Supporting copy.");
-  });
-
-  it("does not build a mask inside a carousel viewport or rich text", () => {
+  it("reveals immediately inside a carousel viewport instead of observing it", () => {
+    // A slide off to the side of a carousel never intersects, so observing it
+    // would hold it hidden forever behind the CSS hold rule.
     document.body.innerHTML = `
-      <div data-carousel-viewport><h2 data-anim="wipe">In a carousel</h2></div>
-      <div class="w-richtext"><h2 data-anim="wipe">In rich text</h2></div>`;
+      <div data-carousel-viewport><h2 data-anim="fade-up-lg">In a carousel</h2></div>
+      <div class="w-richtext"><h2 data-anim="fade-up">In rich text</h2></div>
+      <h2 data-anim="fade-up-lg">Normal</h2>`;
     initAnim();
 
-    document.querySelectorAll("[data-anim~='wipe']").forEach((el) => {
-      expect(el.querySelector("[data-anim-mask]")).toBeNull();
-    });
+    const inCarousel = document.querySelector('[data-carousel-viewport] h2');
+    const inRichText = document.querySelector('.w-richtext h2');
+    const normal = document.querySelectorAll('h2')[2];
+    expect(inCarousel.getAttribute("data-anim-state")).toBe("in");
+    expect(inRichText.getAttribute("data-anim-state")).toBe("in");
+    expect(normal.hasAttribute("data-anim-state")).toBe(false);
+    expect(observed).not.toContain(inCarousel);
+    expect(observed).toContain(normal);
   });
 });
 
@@ -171,7 +165,7 @@ describe("fail open", () => {
     const title = document.querySelector(".faq_title");
     getCb()([{ target: title, isIntersecting: true, boundingClientRect: { bottom: 400 } }]);
     // CSS missing/overridden: it was told to reveal and never did.
-    title.querySelector("[data-anim-line]").style.opacity = "0";
+    title.style.opacity = "0";
 
     vi.advanceTimersByTime(3000);
     expect(document.documentElement.hasAttribute("data-anim-panic")).toBe(true);
@@ -184,7 +178,7 @@ describe("fail open", () => {
     initAnim();
 
     // Held hidden, below the trigger point. This is the system working.
-    document.querySelector(".faq_title [data-anim-line]").style.opacity = "0";
+    document.querySelector(".faq_title").style.opacity = "0";
     document.querySelector(".faq_text").style.opacity = "0";
 
     vi.advanceTimersByTime(3000);
@@ -201,7 +195,7 @@ describe("fail open", () => {
     vi.advanceTimersByTime(2400);
     const title = document.querySelector(".faq_title");
     getCb()([{ target: title, isIntersecting: true, boundingClientRect: { bottom: 400 } }]);
-    title.querySelector("[data-anim-line]").style.opacity = "0.3";
+    title.style.opacity = "0.3";
 
     vi.advanceTimersByTime(600);
     expect(document.documentElement.hasAttribute("data-anim-panic")).toBe(false);
