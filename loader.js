@@ -17,7 +17,8 @@
 // `dist/bundle.js` from the same commit, so loader and bundle can never drift.
 //
 // Resolution order (first match wins):
-//   1. URL params      ?env=local | ?env=live | ?commit=<sha> | ?local=<url> | ?dev=1 | ?dev=0
+//   1. URL params      ?env=local | ?env=live | ?commit=<sha> | ?local=<url>
+//                      ?dev (bare) | ?dev=1 → dev on + panel;  ?dev=0 → force off
 //   2. Persisted dev   localStorage el_dev_enabled === "true" (+ el_env / el_local / el_commit)
 //   3. Auto-probe      on dev hosts (localhost / *.webflow.io) or when dev is on:
 //                      quietly check if LocalCan is up and switch to it, else CDN.
@@ -82,12 +83,31 @@
     return v && v.trim() ? v.trim() : null;
   };
 
+  // Presence-style flag. `param()` deliberately returns null for an empty value
+  // (right for ?env=/?commit=/?local=, which need a real value), but that made a
+  // bare `?dev` a no-op — it reads as "" → null → dev never switched on. A flag
+  // written without a value means ON, which is what everyone types.
+  //   ?dev, ?dev=1, ?dev=true, ?dev=on, ?dev=yes  → true
+  //   ?dev=0, ?dev=false, ?dev=off, ?dev=no       → false (force OFF)
+  //   absent, or an unrecognised value            → null  (no opinion)
+  const flag = (name) => {
+    if (!params.has(name)) return null;
+    const v = (params.get(name) || "").trim();
+    if (!v) return true;
+    if (/^(1|true|dev|on|yes)$/i.test(v)) return true;
+    if (/^(0|false|off|no)$/i.test(v)) return false;
+    return null;
+  };
+
   // -- resolve config --------------------------------------------------------
   const devEnabled = store.get(KEYS.devEnabled) === "true";
   const isDevHost = /\.webflow\.io$/.test(location.hostname);
 
-  const devParam = param("dev") || param("mode");
-  const devMode = isDevHost || (devParam && /^(1|true|dev|on)$/i.test(devParam));
+  // null = no opinion → fall back to the host check. An explicit ?dev=0 now wins
+  // over isDevHost, so you can force a staging page to behave like production
+  // (previously impossible: `isDevHost ||` short-circuited it).
+  const devFlag = flag("dev") ?? flag("mode");
+  const devMode = devFlag === false ? false : devFlag === true || isDevHost;
 
   const persisted = (k) => (devMode ? store.get(k) : null);
 
@@ -127,8 +147,11 @@
   // -- probe + inject --------------------------------------------------------
   probe().then((source) => {
     inject(source);
-    const forcePanel = devParam && /^(1|true|dev|on)$/i.test(devParam);
-    const showPanel = forcePanel || (isDevHost && source.localUp === true);
+    // An explicit ?dev asks for the panel outright — even when LocalCan is down
+    // and we fell back to the CDN, because seeing "live / local unreachable" IS
+    // the diagnostic. An explicit ?dev=0 suppresses it everywhere.
+    const showPanel =
+      devFlag === false ? false : devFlag === true || (isDevHost && source.localUp === true);
     if (showPanel) mountPanel(source);
   });
 
