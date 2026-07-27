@@ -405,7 +405,10 @@
         </div>
         <div data-el-persist>
           <button data-el-reset type="button">Reset overrides</button>
-          <span data-el-scope>${envOverride ? "override · this tab only" : "no override"}</span>
+          <span data-el-scope>${
+            [envOverride ? "env" : null, el.flags.overridden ? "flags" : null].filter(Boolean).join(" + ") ||
+            "no override"
+          }${envOverride || el.flags.overridden ? " · this tab" : ""}</span>
         </div>
       </div>
     `;
