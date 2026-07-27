@@ -1,21 +1,29 @@
 /**
- * Auto hide/show nav on scroll — CSS-backed (JS only flips one attribute).
+ * Nav shell — auto-hide on scroll + dropdown panels + mobile menu.
  *
- * Behaviour:
- *   - Within the top threshold (default 100vh): always shown.
- *   - Past the threshold: hide when scrolling down, show when scrolling up.
+ * Markup contract (in .nav_shell or its parent):
+ *   data-nav                  → auto-hide nav bar
+ *   data-nav-threshold        → optional reveal zone ("100vh", "80vh", or px)
+ *   data-nav-trigger="{name}" → desktop dropdown trigger
+ *   data-nav-panel="{name}"   → desktop dropdown panel
+ *   data-nav-menu-toggle      → mobile hamburger
+ *   data-nav-mobile="{name}"  → mobile view
+ *   data-nav-mobile-trigger   → drill-down link inside mobile
+ *   data-nav-back             → back button inside mobile view
  *
- * The JS only sets `data-nav-hidden="true|false"` on the nav element; the
- * transform + transition live in CSS (see the header Embed), mirroring the
- * tabs module's contract.
- *
- * Markup contract: put `data-nav` on the fixed/sticky nav bar. Optional
- * `data-nav-threshold` overrides the reveal zone ("100vh", "80vh", or px).
+ * Desktop dropdown panels close on:
+ *   - pointer leaving the [trigger + panel] hover zone
+ *   - pointer entering a trigger with no panel while a panel is open
+ *   - scroll, Escape, focus leaving the nav, click outside
  */
 
 import { qsa } from "../utils/dom.js";
 
-const MOVE_DELTA = 6; // px of travel before we react (ignores jitter)
+/* ------------------------------------------------------------------------- */
+/*  Scroll auto-hide                                                         */
+/* ------------------------------------------------------------------------- */
+
+const MOVE_DELTA = 6;
 
 function thresholdPx(nav) {
   const raw = (nav.getAttribute("data-nav-threshold") || "").trim();
@@ -24,7 +32,7 @@ function thresholdPx(nav) {
   return parseFloat(raw) || window.innerHeight;
 }
 
-function setupNav(nav) {
+function setupScrollHide(nav) {
   let lastY = window.scrollY || window.pageYOffset;
   let ticking = false;
 
@@ -50,8 +58,287 @@ function setupNav(nav) {
   update();
 }
 
+/* ------------------------------------------------------------------------- */
+/*  Dropdown panels + mobile menu                                            */
+/* ------------------------------------------------------------------------- */
+
+const uid = () => Math.random().toString(36).slice(2, 8);
+const hoverable = window.matchMedia("(hover: hover) and (pointer: fine)");
+const isDesktop = () => window.innerWidth >= 992;
+const desktopMouse = () => hoverable.matches && isDesktop();
+const focusables = (el) =>
+  [...el.querySelectorAll('a[href],button,input,select,textarea,[tabindex]:not([tabindex="-1"])')].filter(
+    (n) => !n.disabled && n.offsetParent !== null,
+  );
+
+function setupShell(root) {
+  if (root.dataset.navReady) return;
+  root.dataset.navReady = "true";
+
+  const panels = qsa(root, "[data-nav-panel]");
+  const views = qsa(root, "[data-nav-mobile]");
+  const triggers = qsa(root, "[data-nav-trigger]");
+  const drills = qsa(root, "[data-nav-mobile-trigger]");
+  const backs = qsa(root, "[data-nav-back]");
+  const toggle = root.querySelector("[data-nav-menu-toggle]");
+
+  const panelFor = (name) => panels.find((p) => p.dataset.navPanel === name);
+  const viewFor = (name) => views.find((v) => v.dataset.navMobile === name);
+  const panelsOpen = () => panels.some((p) => p.classList.contains("is-open"));
+  const menuOpen = () => toggle?.getAttribute("aria-expanded") === "true";
+
+  const syncShell = () => {
+    const open = panelsOpen() || menuOpen();
+    root.classList.toggle("is-open", open);
+    document.documentElement.classList.toggle("nav-menu-open", menuOpen());
+    document.documentElement.classList.toggle("nav-open", open);
+  };
+
+  /* ---- Desktop panels ---- */
+  let openTimer = null;
+  let closeTimer = null;
+
+  const openPanel = (name) => {
+    panels.forEach((p) => {
+      const on = p.dataset.navPanel === name;
+      p.classList.toggle("is-open", on);
+      p.setAttribute("aria-hidden", String(!on));
+    });
+    triggers.forEach((t) => t.setAttribute("aria-expanded", String(t.dataset.navTrigger === name)));
+    syncShell();
+  };
+
+  const closePanels = () => {
+    panels.forEach((p) => {
+      p.classList.remove("is-open");
+      p.setAttribute("aria-hidden", "true");
+    });
+    triggers.forEach((t) => t.setAttribute("aria-expanded", "false"));
+    syncShell();
+  };
+
+  const focusFirstInPanel = (name) => {
+    const p = panelFor(name);
+    requestAnimationFrame(() => {
+      const f = p && focusables(p)[0];
+      if (f) f.focus();
+    });
+  };
+
+  const cancelTimers = () => {
+    clearTimeout(openTimer);
+    clearTimeout(closeTimer);
+  };
+
+  triggers.forEach((t) => {
+    const name = t.dataset.navTrigger;
+    const p = panelFor(name);
+    t.setAttribute("aria-haspopup", "true");
+    t.setAttribute("aria-expanded", "false");
+    if (p) {
+      if (!p.id) p.id = "nav-panel-" + name + "-" + uid();
+      t.setAttribute("aria-controls", p.id);
+    }
+
+    /* Click — toggle on touch, no-op on desktop/hover (unless already open) */
+    t.addEventListener("click", (e) => {
+      if (desktopMouse()) {
+        if (panelFor(name)?.classList.contains("is-open")) closePanels();
+        return;
+      }
+      e.preventDefault();
+      panelFor(name)?.classList.contains("is-open") ? closePanels() : openPanel(name);
+    });
+
+    /* Hover open with 70ms debounce.
+       If the trigger has no panel (e.g. Insurers, About), close any open panels. */
+    t.addEventListener("mouseenter", () => {
+      if (!desktopMouse()) return;
+      cancelTimers();
+      if (p) {
+        openTimer = setTimeout(() => openPanel(name), 70);
+      } else {
+        closePanels();
+      }
+    });
+
+    /* Hover leave — if this trigger has a panel, start a short timer so moving
+       into the panel doesn't close. Triggers without a panel already closed
+       on mouseenter, so no action needed. */
+    t.addEventListener("mouseleave", () => {
+      if (!desktopMouse() || !p) return;
+      cancelTimers();
+      closeTimer = setTimeout(closePanels, 120);
+    });
+
+    /* Keyboard */
+    t.addEventListener("keydown", (e) => {
+      if (!isDesktop() || !p) return;
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        t.getAttribute("aria-expanded") === "true" ? closePanels() : (openPanel(name), focusFirstInPanel(name));
+      } else if (e.key === "ArrowDown") {
+        e.preventDefault();
+        openPanel(name);
+        focusFirstInPanel(name);
+      } else if (e.key === "Escape") {
+        closePanels();
+      }
+    });
+  });
+
+  /* Panel hover — cancel close when entering, close when leaving */
+  panels.forEach((p) => {
+    p.addEventListener("mouseenter", () => {
+      if (!desktopMouse()) return;
+      clearTimeout(closeTimer);
+    });
+    p.addEventListener("mouseleave", () => {
+      if (!desktopMouse()) return;
+      closeTimer = setTimeout(closePanels, 120);
+    });
+
+    p.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        closePanels();
+        triggers.find((t) => t.dataset.navTrigger === p.dataset.navPanel)?.focus();
+      } else if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+        const items = focusables(p);
+        if (!items.length) return;
+        e.preventDefault();
+        const i = items.indexOf(document.activeElement);
+        const next = e.key === "ArrowDown" ? items[i + 1] || items[0] : items[i - 1] || items[items.length - 1];
+        next.focus();
+      }
+    });
+  });
+
+  /* Scroll closes panels */
+  window.addEventListener(
+    "scroll",
+    () => {
+      if (panelsOpen()) closePanels();
+    },
+    { passive: true },
+  );
+
+  /* Focus leaving the nav closes panels */
+  root.addEventListener("focusout", () => {
+    setTimeout(() => {
+      if (panelsOpen() && !root.contains(document.activeElement)) closePanels();
+    }, 0);
+  });
+
+  /* ---- Mobile menu ---- */
+  let lastFocused = null;
+
+  const showView = (name) => {
+    views.forEach((v) => {
+      const on = v.dataset.navMobile === name;
+      v.classList.toggle("is-open", on);
+      v.setAttribute("aria-hidden", String(!on));
+    });
+  };
+
+  const setMenu = (open) => {
+    if (toggle) {
+      toggle.setAttribute("aria-expanded", String(open));
+      toggle.setAttribute("aria-label", open ? "Close menu" : "Open menu");
+    }
+    if (open) {
+      lastFocused = document.activeElement;
+      showView("main");
+    } else
+      views.forEach((v) => {
+        v.classList.remove("is-open");
+        v.setAttribute("aria-hidden", "true");
+      });
+    syncShell();
+    if (open)
+      requestAnimationFrame(() => {
+        (focusables(viewFor("main") || root)[0] || toggle)?.focus();
+      });
+    else lastFocused?.focus?.();
+  };
+
+  if (toggle) {
+    toggle.setAttribute("aria-expanded", "false");
+    toggle.setAttribute("aria-label", "Open menu");
+    toggle.addEventListener("click", (e) => {
+      e.preventDefault();
+      setMenu(!menuOpen());
+    });
+  }
+
+  drills.forEach((t) =>
+    t.addEventListener("click", (e) => {
+      e.preventDefault();
+      showView(t.dataset.navMobileTrigger);
+    }),
+  );
+
+  backs.forEach((b) =>
+    b.addEventListener("click", (e) => {
+      e.preventDefault();
+      showView("main");
+    }),
+  );
+
+  /* Scrim */
+  (root.closest(".nav") || root)
+    .querySelector(".nav_scrim")
+    ?.addEventListener("click", () => {
+      closePanels();
+      if (menuOpen()) setMenu(false);
+    });
+
+  /* Tab trap */
+  root.addEventListener("keydown", (e) => {
+    if (e.key !== "Tab" || !menuOpen()) return;
+    const f = focusables(root);
+    if (!f.length) return;
+    const first = f[0],
+      last = f[f.length - 1];
+    if (e.shiftKey && document.activeElement === first) {
+      e.preventDefault();
+      last.focus();
+    } else if (!e.shiftKey && document.activeElement === last) {
+      e.preventDefault();
+      first.focus();
+    }
+  });
+
+  /* Real-link tap closes menu */
+  root.addEventListener("click", (e) => {
+    if (!menuOpen()) return;
+    const link = e.target.closest("a[href]");
+    if (!link || link.matches("[data-nav-mobile-trigger],[data-nav-back],[data-nav-menu-toggle]")) return;
+    const href = link.getAttribute("href") || "";
+    if (href && href !== "#") setMenu(false);
+  });
+
+  /* ---- Shared: Escape + outside click ---- */
+  document.addEventListener("keydown", (e) => {
+    if (e.key !== "Escape") return;
+    closePanels();
+    if (menuOpen()) setMenu(false);
+  });
+
+  document.addEventListener("click", (e) => {
+    if (!root.contains(e.target)) {
+      closePanels();
+    }
+  });
+}
+
+/* ------------------------------------------------------------------------- */
+/*  Init                                                                     */
+/* ------------------------------------------------------------------------- */
+
 export function initNav(root = document) {
-  qsa(root, "[data-nav]").forEach(setupNav);
+  qsa(root, "[data-nav]").forEach(setupScrollHide);
+  qsa(root, ".nav_shell").forEach(setupShell);
 }
 
 export default initNav;
