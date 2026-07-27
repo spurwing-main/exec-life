@@ -127,7 +127,9 @@
   // -- probe + inject --------------------------------------------------------
   probe().then((source) => {
     inject(source);
-    if (devMode) mountPanel(source);
+    const forcePanel = devParam && /^(1|true|dev|on)$/i.test(devParam);
+    const showPanel = forcePanel || (isDevHost && source.localUp === true);
+    if (showPanel) mountPanel(source);
   });
 
   // Decide the source, probing LocalCan when needed.
