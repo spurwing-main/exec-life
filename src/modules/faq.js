@@ -19,6 +19,11 @@
  * Behaviour:
  *   - Single-open by default: opening one item closes its siblings. Add
  *     `data-faq="multi"` to the root to let items open independently.
+ *   - The first item opens on load when the markup marks nothing open. This
+ *     matters because the list is a CMS Collection List: every item is stamped
+ *     from ONE template, so `data-open` is necessarily identical on all of them
+ *     and cannot single out the first. Authoring an explicit `data-open="true"`
+ *     still wins, and `data-faq-open="none"` on the root opts out entirely.
  *   - Toggles are real <button>s, so Enter/Space and focus come for free; we
  *     add ArrowUp/Down/Home/End roving focus across the headers.
  *   - a11y wiring (ids, aria-controls, aria-labelledby, role=region) is applied
@@ -64,6 +69,20 @@ function setupFaq(root) {
 
   // Normalise initial state from the markup's data-open.
   entries.forEach((entry) => setOpen(entry, entry.item.getAttribute("data-open") === "true"));
+
+  // A Collection List stamps every item from one template, so `data-open` is
+  // the same on all of them — either nothing is open or (in multi mode) all of
+  // them are. Fall back to opening the first so the section never lands closed.
+  const openCount = entries.filter(
+    (e) => e.item.getAttribute("data-open") === "true"
+  ).length;
+
+  if (openCount === 0 && root.getAttribute("data-faq-open") !== "none") {
+    setOpen(entries[0], true);
+  } else if (openCount > 1 && !allowMulti) {
+    // Single-open mode can't honour a template that opened everything.
+    entries.forEach((entry, i) => setOpen(entry, i === 0));
+  }
 
   function activate(entry) {
     const isOpen = entry.item.getAttribute("data-open") === "true";

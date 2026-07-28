@@ -98,3 +98,72 @@ describe("initFaq", () => {
     expect(document.activeElement).toBe(toggles[0]); // wraps
   });
 });
+
+describe("initFaq — CMS Collection List defaults", () => {
+  beforeEach(() => {
+    document.body.innerHTML = "";
+  });
+
+  it("opens the first item when the template marks nothing open", () => {
+    // A Collection List stamps one template across every item, so data-open is
+    // uniformly "false" and cannot single out the first.
+    const { items, toggles } = mount({ openIndex: -1 });
+    initFaq();
+
+    expect(openStates(items)).toEqual(["true", "false", "false", "false"]);
+    expect(toggles[0].getAttribute("aria-expanded")).toBe("true");
+  });
+
+  it("respects data-faq-open=none and stays fully closed", () => {
+    const { items } = mount({ openIndex: -1 });
+    document.querySelector("[data-faq]").setAttribute("data-faq-open", "none");
+    initFaq();
+
+    expect(openStates(items)).toEqual(["false", "false", "false", "false"]);
+  });
+
+  it("does not override an explicitly opened item", () => {
+    const { items } = mount({ openIndex: 2 });
+    initFaq();
+
+    expect(openStates(items)).toEqual(["false", "false", "true", "false"]);
+  });
+
+  it("collapses to the first when a template opened every item in single mode", () => {
+    document.body.innerHTML = `
+      <div class="faq_list" data-faq>
+        ${[0, 1, 2]
+          .map(
+            (i) => `<div class="faq_item" data-faq-item data-open="true">
+                      <button class="faq_toggle" data-faq-toggle type="button"></button>
+                      <div class="faq_panel" data-faq-panel></div>
+                    </div>`
+          )
+          .join("")}
+      </div>`;
+    initFaq();
+
+    expect(
+      openStates(Array.from(document.querySelectorAll("[data-faq-item]")))
+    ).toEqual(["true", "false", "false"]);
+  });
+
+  it("leaves every item open in multi mode", () => {
+    document.body.innerHTML = `
+      <div class="faq_list" data-faq="multi">
+        ${[0, 1]
+          .map(
+            () => `<div class="faq_item" data-faq-item data-open="true">
+                     <button class="faq_toggle" data-faq-toggle type="button"></button>
+                     <div class="faq_panel" data-faq-panel></div>
+                   </div>`
+          )
+          .join("")}
+      </div>`;
+    initFaq();
+
+    expect(
+      openStates(Array.from(document.querySelectorAll("[data-faq-item]")))
+    ).toEqual(["true", "true"]);
+  });
+});
