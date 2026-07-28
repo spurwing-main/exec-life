@@ -9,6 +9,7 @@ Each file maps to one HTML Embed, named identically in the Webflow Navigator:
 |---|---|---|
 | `global-motion-tokens.css` | `Global — motion tokens` | **Header** component |
 | `global-motion.css` | `Global — motion` | **Header** component |
+| `who-help-tabs.css` | `Who help — tabs` | **Who Help** component |
 
 ## Why this exists
 
