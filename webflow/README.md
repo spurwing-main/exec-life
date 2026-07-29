@@ -10,6 +10,8 @@ Each file maps to one HTML Embed, named identically in the Webflow Navigator:
 | `global-motion-tokens.css` | `Global — motion tokens` | **Header** component |
 | `global-motion.css` | `Global — motion` | **Header** component |
 | `who-help-tabs.css` | `Who help — tabs` | **Who Help** component |
+| `home-hero.css` | `Home hero` | Home hero section, on `/` |
+| `about-service-video.css` | `About service — video` | **Service About** component |
 
 ## Why this exists
 
@@ -38,7 +40,7 @@ whitespace will differ, but no selector or declaration should.
 
 ## Ordering
 
-There is **no** load-order dependency between these two files: `var()` resolves
+There is **no** load-order dependency between these files: `var()` resolves
 from the cascade at computed-value time, not textually, so tokens can sit in any
 embed in any order. They are split for legibility, not sequencing.
 

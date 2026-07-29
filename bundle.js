@@ -21,6 +21,7 @@ import { initNav } from "./src/modules/nav.js";
 import { initCarousels } from "./src/modules/carousel.js";
 import { initFaq } from "./src/modules/faq.js";
 import { initAnim } from "./src/modules/anim.js";
+import { initVideo } from "./src/modules/video.js";
 
 const el = (window.el = window.el || {});
 el.functions = el.functions || {};
@@ -34,6 +35,7 @@ el.functions.initNav = initNav;
 el.functions.initCarousels = initCarousels;
 el.functions.initFaq = initFaq;
 el.functions.initAnim = initAnim;
+el.functions.initVideo = initVideo;
 
 /**
  * flag → init. Order matters: `anim` runs first because it is the only module
@@ -46,6 +48,7 @@ const MODULES = [
   ["nav", initNav],
   ["carousels", initCarousels],
   ["faq", initFaq],
+  ["video", initVideo],
 ];
 
 /**

@@ -81,6 +81,7 @@
     carousels: { label: "Carousels", default: true },
     faq: { label: "FAQ", default: true },
     anim: { label: "Motion / reveals", default: true },
+    video: { label: "Video facade", default: true },
   };
 
   const el = (window.el = window.el || {});
