@@ -1,0 +1,235 @@
+/* ==========================================================================
+   Tax calculator — CSS
+   Embed lives INSIDE the "Tax Calculator" component, so it travels with every
+   instance (the calculator lands on 9 pages).
+
+   Scope: only what the Style panel cannot express. Everything with a resting
+   look — panel fills, radii, type, the grid, breakpoint stacking — is authored
+   on the `calc_*` classes in the Designer and must NOT be restated here.
+
+   What that leaves:
+     - the range input's track and thumb (pseudo-elements, per-engine)
+     - number-input chrome removal
+     - ::placeholder
+     - :focus-visible rings
+     - the active band label (attribute + nth-child)
+     - the ⓘ tooltip bubble (::after + attr())
+
+   NOTHING here hides anything, so nothing gates on the `calc` feature flag.
+   With the bundle dead the section still renders in full, showing the static
+   zero state the Designer authored. Fail-open by construction — same principle
+   as `global-motion.css`, but here it costs us nothing to guarantee.
+
+   Colour and size come from the Webflow variables; there is no raw hex below.
+   ========================================================================== */
+
+/* --------------------------------------------------------------------------
+   DEFINITIONS
+   Custom properties only — no visible effect on their own.
+   -------------------------------------------------------------------------- */
+
+[data-calc] {
+  /* Overwritten by calc.js on every band change; this is the design's default
+     (Higher rate = the middle stop) so the track is correct before JS runs. */
+  --calc-band-pos: 50%;
+
+  --calc-track-h: 0.3125rem; /* 5px, per the Figma LINE strokeWeight */
+  --calc-thumb: 1rem; /* 16px, per the Figma ELLIPSE */
+
+  /* The track gradient is declared once here and referenced by both engines'
+     pseudo-element rules below, which have to be written out separately. */
+  --calc-track-bg: linear-gradient(
+    to right,
+    var(--_color---bright-teal--100) 0 var(--calc-band-pos),
+    var(--_color---white--040) var(--calc-band-pos) 100%
+  );
+}
+
+/* --------------------------------------------------------------------------
+   NUMBER INPUTS
+   The box (height, radius, border, fill, text colour) is on `.calc_input` in
+   the Designer. These are the parts with no panel control.
+   -------------------------------------------------------------------------- */
+
+.calc_input::placeholder {
+  color: var(--_color---white--050);
+  opacity: 1; /* Firefox dims placeholders by default */
+}
+
+/* Spinners: visual noise on a currency field, and the up/down arrows invite
+   clicking through 400 single-pound steps. */
+.calc_input::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  appearance: none;
+  margin: 0;
+}
+
+.calc_input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  appearance: none;
+  margin: 0;
+}
+
+.calc_input[type="number"] {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
+/* --------------------------------------------------------------------------
+   BAND SLIDER
+   A native <input type="range"> in a one-line HTML Embed. Native buys keyboard
+   arrows, drag, touch and snapping for free; a div-and-pointer-events rebuild
+   buys nothing and loses all of it. min=0 max=2 step=1 gives exactly the three
+   stops the client asked for.
+
+   The two-tone track can't be done in pure CSS cross-engine (there is no
+   ::-moz-range-progress in WebKit and no ::-webkit-slider-runnable-track fill),
+   so calc.js publishes the thumb position as --calc-band-pos and the gradient
+   below reads it. JS supplies one number; CSS owns both colours.
+   -------------------------------------------------------------------------- */
+
+.calc_slider {
+  -webkit-appearance: none;
+  appearance: none;
+  display: block;
+  width: 100%;
+  height: var(--calc-thumb); /* room for the thumb, not the track */
+  margin: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+/* ⚠️ EVERY vendor pseudo-element below gets its OWN rule. A selector list is
+   all-or-nothing: `::-webkit-slider-runnable-track, ::-moz-range-track` in one
+   list is dropped ENTIRELY by both engines, because each fails to parse the
+   other's pseudo-element and one invalid selector invalidates the whole list.
+   The result is a slider with no track at all, in every browser. Do not merge
+   these rules to "tidy up". */
+
+.calc_slider::-webkit-slider-runnable-track {
+  height: var(--calc-track-h);
+  border-radius: var(--calc-track-h);
+  background: var(--calc-track-bg);
+}
+
+.calc_slider::-moz-range-track {
+  height: var(--calc-track-h);
+  border-radius: var(--calc-track-h);
+  background: var(--calc-track-bg);
+}
+
+.calc_slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: var(--calc-thumb);
+  height: var(--calc-thumb);
+  border: 0;
+  border-radius: 50%;
+  background: var(--_color---white--100);
+  /* Centre the thumb on the track: half the height difference. */
+  margin-top: calc((var(--calc-track-h) - var(--calc-thumb)) / 2);
+}
+
+.calc_slider::-moz-range-thumb {
+  width: var(--calc-thumb);
+  height: var(--calc-thumb);
+  border: 0;
+  border-radius: 50%;
+  background: var(--_color---white--100);
+}
+
+/* --------------------------------------------------------------------------
+   ACTIVE BAND LABEL — NOT IN THE DESIGN. OFF by default.
+
+   QA 2026-07-30: the Figma frames render all three labels in the same white at
+   the same weight; the only indication of the selected band is the thumb sitting
+   above it. Highlighting the active label was an addition of mine, and it made
+   the build differ visibly from the design, so it is parked here rather than
+   shipped.
+
+   `calc.js` still publishes `data-calc-band-value` on the root, so switching this
+   on later is uncommenting three lines — no JS change. Worth proposing: with the
+   thumb alone, the selected band is inferred from position rather than stated.
+   -------------------------------------------------------------------------- */
+
+/*
+[data-calc-band-value="0"] .calc_band-label:nth-child(1),
+[data-calc-band-value="1"] .calc_band-label:nth-child(2),
+[data-calc-band-value="2"] .calc_band-label:nth-child(3) {
+  color: var(--_color---bright-teal--100);
+  font-weight: var(--_type---weight--medium);
+}
+*/
+
+/* --------------------------------------------------------------------------
+   FOCUS
+   Webflow ships no visible focus style, and this section is three controls and
+   nothing else — it is the one place on the site where keyboard-only use is a
+   realistic path through the page.
+   -------------------------------------------------------------------------- */
+
+.calc_input:focus-visible {
+  outline: 2px solid var(--_color---bright-teal--100);
+  outline-offset: 2px;
+}
+
+.calc_slider:focus-visible {
+  outline: none; /* the ring goes on the thumb, not the full-width input */
+}
+
+.calc_slider:focus-visible::-webkit-slider-thumb {
+  outline: 2px solid var(--_color---bright-teal--100);
+  outline-offset: 2px;
+}
+
+.calc_slider:focus-visible::-moz-range-thumb {
+  outline: 2px solid var(--_color---bright-teal--100);
+  outline-offset: 2px;
+}
+
+/* --------------------------------------------------------------------------
+   ⓘ TOOLTIP
+   Content comes from `data-calc-tip` on the element, so the copy is authored
+   in the Designer's settings panel and stays visible to whoever edits it —
+   not buried in this file. `tabindex="0"` on the element (Designer) makes the
+   :focus-visible half reachable without a mouse.
+   -------------------------------------------------------------------------- */
+
+.calc_info {
+  position: relative;
+}
+
+.calc_info::after {
+  content: attr(data-calc-tip);
+  position: absolute;
+  bottom: calc(100% + 0.5rem);
+  left: 50%;
+  translate: -50% 0;
+  z-index: 2;
+  width: max-content;
+  max-width: 18rem;
+  padding: var(--_sizes---8) var(--_sizes---12);
+  border-radius: var(--_sizes---radius--s);
+  background: var(--_color---midnight--100);
+  color: var(--_color---white--100);
+  font-family: var(--_type---ff--body);
+  font-size: var(--_type---body--s);
+  font-weight: var(--_type---weight--light);
+  line-height: 1.4;
+  text-align: left;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity var(--anim-dur-ui) var(--anim-ease);
+}
+
+.calc_info:hover::after,
+.calc_info:focus-visible::after {
+  opacity: 1;
+  visibility: visible;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .calc_info::after {
+    transition: none;
+  }
+}
