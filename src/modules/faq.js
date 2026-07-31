@@ -19,6 +19,9 @@
  * Behaviour:
  *   - Single-open by default: opening one item closes its siblings. Add
  *     `data-faq="multi"` to the root to let items open independently.
+ *   - Add `data-faq-breakpoints="mbl,mbp"` to make the accordion interactive
+ *     only at those breakpoints. Outside them every item is open and static.
+ *     Supported names come from the shared breakpoint map: dsk, tab, mbl, mbp.
  *   - The first item opens on load when the markup marks nothing open. This
  *     matters because the list is a CMS Collection List: every item is stamped
  *     from ONE template, so `data-open` is necessarily identical on all of them
@@ -30,15 +33,29 @@
  *     at init so the markup stays clean.
  */
 
+import { BREAKPOINT_QUERIES } from "../utils/breakpoints.js";
 import { qsa, qs, closestWithin } from "../utils/dom.js";
 
 let uid = 0;
+
+function parseBreakpoints(value) {
+  if (!value) return [];
+
+  return value
+    .split(",")
+    .map((breakpoint) => breakpoint.trim().toLowerCase())
+    .filter((breakpoint) => breakpoint in BREAKPOINT_QUERIES);
+}
 
 function setupFaq(root) {
   const items = qsa(root, "[data-faq-item]").filter((item) => item.closest("[data-faq]") === root);
   if (!items.length) return;
 
   const allowMulti = root.getAttribute("data-faq") === "multi";
+  const activeBreakpoints = parseBreakpoints(root.getAttribute("data-faq-breakpoints"));
+  const mediaQueries = activeBreakpoints.map((breakpoint) =>
+    window.matchMedia(BREAKPOINT_QUERIES[breakpoint])
+  );
   const group = `faq-${(uid += 1)}`;
 
   const entries = items
@@ -60,31 +77,55 @@ function setupFaq(root) {
     })
     .filter(Boolean);
 
+  if (!entries.length) return;
+
   const toggles = entries.map((e) => e.toggle);
+  let isActive = null;
 
   function setOpen(entry, open) {
     entry.item.setAttribute("data-open", open ? "true" : "false");
     entry.toggle.setAttribute("aria-expanded", open ? "true" : "false");
   }
 
-  // Normalise initial state from the markup's data-open.
-  entries.forEach((entry) => setOpen(entry, entry.item.getAttribute("data-open") === "true"));
+  // Capture the authored state before a static breakpoint forces everything
+  // open. This is the state restored whenever the accordion becomes active.
+  const initialOpen = entries.map((entry) => entry.item.getAttribute("data-open") === "true");
 
   // A Collection List stamps every item from one template, so `data-open` is
   // the same on all of them — either nothing is open or (in multi mode) all of
   // them are. Fall back to opening the first so the section never lands closed.
-  const openCount = entries.filter(
-    (e) => e.item.getAttribute("data-open") === "true"
-  ).length;
+  const openCount = initialOpen.filter(Boolean).length;
 
   if (openCount === 0 && root.getAttribute("data-faq-open") !== "none") {
-    setOpen(entries[0], true);
+    initialOpen[0] = true;
   } else if (openCount > 1 && !allowMulti) {
     // Single-open mode can't honour a template that opened everything.
-    entries.forEach((entry, i) => setOpen(entry, i === 0));
+    initialOpen.forEach((_, i) => {
+      initialOpen[i] = i === 0;
+    });
+  }
+
+  function evaluateBreakpointState() {
+    const shouldBeActive = mediaQueries.length === 0 || mediaQueries.some((query) => query.matches);
+    if (shouldBeActive === isActive) return;
+
+    isActive = shouldBeActive;
+    root.setAttribute("data-faq-active", shouldBeActive ? "true" : "false");
+
+    entries.forEach((entry, i) => {
+      if (shouldBeActive) {
+        setOpen(entry, initialOpen[i]);
+      } else {
+        // Inactive means ordinary static content: fully open, with no
+        // expandable-state announcement and no click/keyboard behaviour.
+        entry.item.setAttribute("data-open", "true");
+        entry.toggle.removeAttribute("aria-expanded");
+      }
+    });
   }
 
   function activate(entry) {
+    if (!isActive) return;
     const isOpen = entry.item.getAttribute("data-open") === "true";
     if (!allowMulti && !isOpen) {
       entries.forEach((other) => other !== entry && setOpen(other, false));
@@ -101,6 +142,7 @@ function setupFaq(root) {
 
   // Roving focus across the headers (buttons already handle Enter/Space).
   root.addEventListener("keydown", (e) => {
+    if (!isActive) return;
     const toggle = closestWithin(root, e.target, "[data-faq-toggle]");
     if (!toggle) return;
     const current = toggles.indexOf(toggle);
@@ -114,6 +156,9 @@ function setupFaq(root) {
     e.preventDefault();
     toggles[next].focus();
   });
+
+  mediaQueries.forEach((query) => query.addEventListener("change", evaluateBreakpointState));
+  evaluateBreakpointState();
 }
 
 export function initFaq(root = document) {
