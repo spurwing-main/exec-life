@@ -187,14 +187,14 @@ describe("initCalc", () => {
     initCalc();
 
     expect(el.root.getAttribute("data-calc-band-value")).toBe("0");
-    expect(el.root.style.getPropertyValue("--calc-band-pos")).toBe("0%");
+    expect(el.root.style.getPropertyValue("--calc-band-pos")).toBe("0");
 
     type(el.band, "1");
     expect(el.root.getAttribute("data-calc-band-value")).toBe("1");
-    expect(el.root.style.getPropertyValue("--calc-band-pos")).toBe("50%");
+    expect(el.root.style.getPropertyValue("--calc-band-pos")).toBe("0.5");
 
     type(el.band, "2");
-    expect(el.root.style.getPropertyValue("--calc-band-pos")).toBe("100%");
+    expect(el.root.style.getPropertyValue("--calc-band-pos")).toBe("1");
   });
 
   it("announces the band by name, never as a percentage", () => {
@@ -273,11 +273,11 @@ describe("initCalc", () => {
 
     // Not dragging: a fractional value still reports its band's position.
     type(el.band, "1.4");
-    expect(el.root.style.getPropertyValue("--calc-band-pos")).toBe("50%");
+    expect(el.root.style.getPropertyValue("--calc-band-pos")).toBe("0.5");
 
     el.root.setAttribute("data-calc-dragging", "");
     type(el.band, "1.4");
-    expect(el.root.style.getPropertyValue("--calc-band-pos")).toBe("70%");
+    expect(el.root.style.getPropertyValue("--calc-band-pos")).toBe("0.7");
   });
 
   it("rounds a mid-drag value to the nearest band for the figures", () => {
@@ -334,7 +334,7 @@ describe("initCalc", () => {
 
     el.band.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true, cancelable: true }));
     expect(el.root.hasAttribute("data-calc-dragging")).toBe(false);
-    expect(el.root.style.getPropertyValue("--calc-band-pos")).toBe("50%");
+    expect(el.root.style.getPropertyValue("--calc-band-pos")).toBe("0.5");
   });
 
   it("still eases when a duration token is present", async () => {

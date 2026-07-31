@@ -187,8 +187,12 @@ function setupCalc(root) {
     });
 
     // State for CSS: the band label emphasis and the slider's two-tone fill.
+    // Published as a unitless fraction (0–1), not a percentage — the CSS needs
+    // a plain <number> to offset the fill by half the thumb width via calc(),
+    // which correctly accounts for its true rendered inset. A percentage
+    // string can't be multiplied against px/% inside calc() the same way.
     root.setAttribute("data-calc-band-value", String(band));
-    root.style.setProperty("--calc-band-pos", `${(pos / Math.max(maxBand, 1)) * 100}%`);
+    root.style.setProperty("--calc-band-pos", String(pos / Math.max(maxBand, 1)));
 
     // A range input announces "2 of 3"; the band name is the useful part.
     if (bandInput && BAND_NAMES[band]) {

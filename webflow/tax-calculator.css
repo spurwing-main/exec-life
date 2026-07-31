@@ -2,18 +2,25 @@
    Resting look lives on the calc_* classes in the Designer. */
 
 /* Registered so it can be transitioned — an unregistered custom property is a
-   token swap, not an animatable value, so the fill would jump between stops. */
+   token swap, not an animatable value, so the fill would jump between stops.
+   A plain <number> (0–1), not <percentage> — the fill stop below has to offset
+   by half the thumb width via calc(), which needs a unitless multiplier to mix
+   with the px/% thumb inset. A <percentage> can't be scaled against a length
+   the same way, and that mismatch was the whole bug: the fill split tracked
+   raw 0–100% of the *track*, while the thumb it's supposed to align with only
+   ever travels 100% minus its own width, inset by half a thumb on each side. */
 @property --calc-band-pos {
-  syntax: "<percentage>";
+  syntax: "<number>";
   inherits: true;
-  initial-value: 50%;
+  initial-value: 0.5;
 }
 
 [data-calc] {
-  --calc-band-pos: 50%;
+  --calc-band-pos: 0.5;
   --calc-track-h: 0.3125rem;
   --calc-thumb: 1rem;
-  --calc-track-bg: linear-gradient(to right, var(--_color---bright-teal--100) 0 var(--calc-band-pos), var(--_color---white--040) var(--calc-band-pos) 100%);
+  --calc-fill-pos: calc(var(--calc-thumb) / 2 + var(--calc-band-pos) * (100% - var(--calc-thumb)));
+  --calc-track-bg: linear-gradient(to right, var(--_color---bright-teal--100) 0 var(--calc-fill-pos), var(--_color---white--040) var(--calc-fill-pos) 100%);
   transition: --calc-band-pos var(--anim-dur-ui) var(--anim-ease);
 }
 
