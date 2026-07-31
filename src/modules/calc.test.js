@@ -54,6 +54,15 @@ function type(input, value) {
   input.dispatchEvent(new Event("input", { bubbles: true }));
 }
 
+/**
+ * Make the snap instant. Waiting on the real animation made these tests
+ * time-dependent, and they failed under load — the behaviour being asserted is
+ * where the thumb lands, not how long it takes to get there.
+ */
+function instantSnap(el) {
+  el.root.style.setProperty("--anim-dur-ui", "0ms");
+}
+
 describe("compute", () => {
   it.each(SIGNED_OFF)(
     "matches the signed-off $name-rate figures for £100/mo over 25 years",
@@ -249,6 +258,101 @@ describe("initCalc", () => {
     });
     initCalc();
     expect(el.out("monthly")).toBe("£132.52");
+  });
+
+  it("makes the range continuous so the thumb can follow the pointer", () => {
+    const el = mount({ premium: "100", band: "1" });
+    expect(el.band.getAttribute("step")).toBe("1"); // as authored
+    initCalc();
+    expect(el.band.step).toBe("any");
+  });
+
+  it("fills the track to the thumb, not the band, while dragging", () => {
+    const el = mount({ premium: "100", band: "1" });
+    initCalc();
+
+    // Not dragging: a fractional value still reports its band's position.
+    type(el.band, "1.4");
+    expect(el.root.style.getPropertyValue("--calc-band-pos")).toBe("50%");
+
+    el.root.setAttribute("data-calc-dragging", "");
+    type(el.band, "1.4");
+    expect(el.root.style.getPropertyValue("--calc-band-pos")).toBe("70%");
+  });
+
+  it("rounds a mid-drag value to the nearest band for the figures", () => {
+    const el = mount({ premium: "100", term: "25", band: "0" });
+    initCalc();
+    el.root.setAttribute("data-calc-dragging", "");
+
+    type(el.band, "0.49"); // still Basic
+    expect(el.out("monthly")).toBe("£74.39");
+    expect(el.root.getAttribute("data-calc-band-value")).toBe("0");
+
+    type(el.band, "0.51"); // crossed into Higher
+    expect(el.out("monthly")).toBe("£132.52");
+    expect(el.root.getAttribute("data-calc-band-value")).toBe("1");
+  });
+
+  it("announces the band, never the fractional value, mid-drag", () => {
+    const el = mount({ premium: "100", band: "0" });
+    initCalc();
+    el.root.setAttribute("data-calc-dragging", "");
+
+    type(el.band, "1.8");
+    expect(el.band.getAttribute("aria-valuenow")).toBe("2");
+    expect(el.band.getAttribute("aria-valuetext")).toBe("Additional");
+  });
+
+  it("moves a whole band per arrow key, not a fraction of the range", () => {
+    const el = mount({ premium: "100", term: "25", band: "0" });
+    instantSnap(el);
+    initCalc();
+
+    const press = (key) =>
+      el.band.dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true }));
+
+    press("ArrowRight");
+    expect(el.band.value).toBe("1");
+    expect(el.out("monthly")).toBe("£132.52");
+
+    press("End");
+    expect(el.band.value).toBe("2");
+
+    // Already at the top — must not run past the last band.
+    press("ArrowRight");
+    expect(el.band.value).toBe("2");
+
+    press("Home");
+    expect(el.band.value).toBe("0");
+  });
+
+  it("clears the dragging flag once the thumb has settled", () => {
+    const el = mount({ premium: "100", band: "0" });
+    instantSnap(el);
+    initCalc();
+
+    el.band.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true, cancelable: true }));
+    expect(el.root.hasAttribute("data-calc-dragging")).toBe(false);
+    expect(el.root.style.getPropertyValue("--calc-band-pos")).toBe("50%");
+  });
+
+  it("still eases when a duration token is present", async () => {
+    const el = mount({ premium: "100", band: "0" });
+    el.root.style.setProperty("--anim-dur-ui", "0.25s");
+    initCalc();
+
+    el.band.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true, cancelable: true }));
+    // Mid-flight: still animating, so the flag is up and the value is fractional.
+    expect(el.root.hasAttribute("data-calc-dragging")).toBe(true);
+    expect(Number(el.band.value)).toBeGreaterThanOrEqual(0);
+    expect(Number(el.band.value)).toBeLessThanOrEqual(1);
+
+    const deadline = Date.now() + 5000;
+    while (el.root.hasAttribute("data-calc-dragging") && Date.now() < deadline) {
+      await new Promise((r) => setTimeout(r, 16));
+    }
+    expect(el.band.value).toBe("1");
   });
 
   it("does nothing when the section has no outputs", () => {

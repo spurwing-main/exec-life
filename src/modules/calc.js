@@ -24,6 +24,8 @@
  *     <input data-calc-premium>            <!-- £/month -->
  *     <input data-calc-term>               <!-- years -->
  *     <input type="range" min="0" max="2" step="1" data-calc-band>
+ *       (authored step="1"; this module switches it to "any" at runtime so the
+ *        thumb tracks the pointer, then snaps back to whole bands on release)
  *     <div data-calc-out="monthly"></div>  <!-- also: annual, term, percent -->
  *
  * The rates are attributes on the COMPONENT DEFINITION, so one edit reaches
@@ -118,6 +120,24 @@ export function compute({ premium, years, bandRate, corpRate }) {
   };
 }
 
+const clamp = (v, lo, hi) => Math.min(Math.max(v, lo), hi);
+
+/**
+ * How long the thumb takes to settle into a band after you let go.
+ *
+ * Read from `--anim-dur-ui` rather than hard-coded, because the track fill uses
+ * that same token for its CSS transition. Two literals would drift and the fill
+ * would finish before the thumb — the one artefact people actually notice.
+ */
+function snapDuration(root, fallback = 250) {
+  const raw = getComputedStyle(root).getPropertyValue("--anim-dur-ui").trim();
+  if (!raw) return fallback;
+  const value = parseFloat(raw);
+  // 0 is meaningful — it means "snap instantly", not "use the default".
+  if (!Number.isFinite(value) || value < 0) return fallback;
+  return raw.endsWith("ms") ? value : value * 1000;
+}
+
 function setupCalc(root) {
   const premiumInput = qs(root, "[data-calc-premium]");
   const termInput = qs(root, "[data-calc-term]");
@@ -132,13 +152,20 @@ function setupCalc(root) {
     readRate(root, "data-calc-rate-additional", DEFAULTS.bands[2]),
   ];
 
+  const maxBand = bands.length - 1;
+
   function render() {
     // Clamp the band index rather than trusting the range's bounds — a hand-
     // edited embed with the wrong `max` would otherwise index past the array.
-    const rawBand = bandInput ? Math.round(Number(bandInput.value)) : 1;
-    const band = Number.isFinite(rawBand)
-      ? Math.min(Math.max(rawBand, 0), bands.length - 1)
-      : 1;
+    const raw = bandInput ? Number(bandInput.value) : 1;
+    const rawBand = Math.round(raw);
+    const band = Number.isFinite(rawBand) ? clamp(rawBand, 0, maxBand) : 1;
+
+    // While a finger is down the track fills to where the thumb actually is,
+    // not to the band it will land on — otherwise the fill jumps ahead of the
+    // thumb at each midpoint and the two visibly disagree.
+    const dragging = root.hasAttribute("data-calc-dragging");
+    const pos = dragging && Number.isFinite(raw) ? clamp(raw, 0, maxBand) : band;
 
     const result = compute({
       premium: readInput(premiumInput),
@@ -161,14 +188,13 @@ function setupCalc(root) {
 
     // State for CSS: the band label emphasis and the slider's two-tone fill.
     root.setAttribute("data-calc-band-value", String(band));
-    root.style.setProperty(
-      "--calc-band-pos",
-      `${(band / Math.max(bands.length - 1, 1)) * 100}%`
-    );
+    root.style.setProperty("--calc-band-pos", `${(pos / Math.max(maxBand, 1)) * 100}%`);
 
     // A range input announces "2 of 3"; the band name is the useful part.
     if (bandInput && BAND_NAMES[band]) {
       bandInput.setAttribute("aria-valuetext", BAND_NAMES[band]);
+      // The value is fractional mid-drag; assistive tech should hear the band.
+      bandInput.setAttribute("aria-valuenow", String(band));
     }
   }
 
@@ -178,6 +204,73 @@ function setupCalc(root) {
       render();
     }
   });
+
+  /**
+   * Three bands on a `step="1"` range means the thumb teleports between three
+   * fixed points — it does not follow your finger, which reads as broken even
+   * though the value is right. So the range is made continuous here and the
+   * discreteness is reimposed on release: drag is 1:1, then the thumb eases
+   * into the nearest band. `step` is set from JS, not authored in the Designer,
+   * so the control still degrades to three fixed stops if this never runs.
+   */
+  if (bandInput && typeof requestAnimationFrame === "function") {
+    let frame = null;
+
+    const settle = (target) => {
+      cancelAnimationFrame(frame);
+      const from = Number(bandInput.value);
+      const finish = () => {
+        bandInput.value = String(target);
+        root.removeAttribute("data-calc-dragging");
+        render();
+      };
+      const ms = snapDuration(root);
+      if (!Number.isFinite(from) || from === target || ms <= 0) return finish();
+
+      const t0 = performance.now();
+      const tick = (now) => {
+        const p = Math.min((now - t0) / ms, 1);
+        const eased = 1 - Math.pow(1 - p, 3);
+        bandInput.value = String(from + (target - from) * eased);
+        if (p < 1) {
+          render();
+          frame = requestAnimationFrame(tick);
+        } else {
+          finish();
+        }
+      };
+      frame = requestAnimationFrame(tick);
+    };
+
+    const release = () => {
+      if (!root.hasAttribute("data-calc-dragging")) return;
+      settle(clamp(Math.round(Number(bandInput.value)), 0, maxBand));
+    };
+
+    bandInput.step = "any";
+    bandInput.addEventListener("pointerdown", () => {
+      cancelAnimationFrame(frame);
+      root.setAttribute("data-calc-dragging", "");
+    });
+    bandInput.addEventListener("pointerup", release);
+    bandInput.addEventListener("pointercancel", release);
+    bandInput.addEventListener("blur", release);
+
+    // `step="any"` leaves the arrow keys stepping by a fraction of the range.
+    // Keyboard users move a whole band at a time, with the same easing.
+    bandInput.addEventListener("keydown", (event) => {
+      const current = clamp(Math.round(Number(bandInput.value)), 0, maxBand);
+      let target = null;
+      if (event.key === "ArrowLeft" || event.key === "ArrowDown") target = current - 1;
+      else if (event.key === "ArrowRight" || event.key === "ArrowUp") target = current + 1;
+      else if (event.key === "Home") target = 0;
+      else if (event.key === "End") target = maxBand;
+      if (target === null) return;
+      event.preventDefault();
+      root.setAttribute("data-calc-dragging", "");
+      settle(clamp(target, 0, maxBand));
+    });
+  }
 
   // Webflow refuses to place form controls outside a <form>, so the fields sit
   // in one — which means Enter in a number field would submit and reload the

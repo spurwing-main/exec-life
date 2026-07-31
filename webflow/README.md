@@ -12,6 +12,26 @@ Each file maps to one HTML Embed, named identically in the Webflow Navigator:
 | `who-help-tabs.css` | `Who help — tabs` | **Who Help** component |
 | `home-hero.css` | `Home hero` | Home hero section, on `/` |
 | `about-service-video.css` | `About service — video` | **Service About** component |
+| `tax-calculator.css` | (unnamed) | **Calculator** component — travels with the component, reached from the Tax Saving Calculator page |
+
+## A file here is not a file in Webflow
+
+`tax-calculator.css` was written, reviewed and committed (4cbd4d5) and **never
+added to Webflow**. It was absent from the table above, so nothing said it was
+missing, and the published page shipped for a day with a range input stripped of
+its native appearance and given no replacement — no track, no thumb — plus no
+focus rings, no tooltip and visible number spinners. Every rule needed to prevent
+that was sitting in this directory the whole time.
+
+Adding a file here is step 1 of 3. It is not done until the embed exists in
+Webflow **and** the site is published. If you add a file, add its row to the
+table in the same commit — the table is the only thing that can tell you a file
+has no home.
+
+Verifying in the Designer canvas is not enough either: Webflow stores an embed's
+`<style>` but does not always render it on the canvas (`designer_get_embed`
+reports this as `renderMismatch` with `renderedStyleChars: 0`). A style embed can
+only be confirmed on a published page.
 
 ## Why this exists
 

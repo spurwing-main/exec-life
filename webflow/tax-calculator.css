@@ -1,63 +1,22 @@
-/* ==========================================================================
-   Tax calculator — CSS
-   Embed lives INSIDE the "Tax Calculator" component, so it travels with every
-   instance (the calculator lands on 9 pages).
+/* Tax calculator — embed CSS. Only what the Style panel cannot express.
+   Resting look lives on the calc_* classes in the Designer. */
 
-   Scope: only what the Style panel cannot express. Everything with a resting
-   look — panel fills, radii, type, the grid, breakpoint stacking — is authored
-   on the `calc_*` classes in the Designer and must NOT be restated here.
-
-   What that leaves:
-     - the range input's track and thumb (pseudo-elements, per-engine)
-     - number-input chrome removal
-     - ::placeholder
-     - :focus-visible rings
-     - the active band label (attribute + nth-child)
-     - the ⓘ tooltip bubble (::after + attr())
-
-   NOTHING here hides anything, so nothing gates on the `calc` feature flag.
-   With the bundle dead the section still renders in full, showing the static
-   zero state the Designer authored. Fail-open by construction — same principle
-   as `global-motion.css`, but here it costs us nothing to guarantee.
-
-   Colour and size come from the Webflow variables; there is no raw hex below.
-   ========================================================================== */
-
-/* --------------------------------------------------------------------------
-   DEFINITIONS
-   Custom properties only — no visible effect on their own.
-   -------------------------------------------------------------------------- */
+/* Registered so it can be transitioned — an unregistered custom property is a
+   token swap, not an animatable value, so the fill would jump between stops. */
+@property --calc-band-pos {
+  syntax: "<percentage>";
+  inherits: true;
+  initial-value: 50%;
+}
 
 [data-calc] {
-  /* Overwritten by calc.js on every band change; this is the design's default
-     (Higher rate = the middle stop) so the track is correct before JS runs. */
   --calc-band-pos: 50%;
-
-  --calc-track-h: 0.3125rem; /* 5px, per the Figma LINE strokeWeight */
-  --calc-thumb: 1rem; /* 16px, per the Figma ELLIPSE */
-
-  /* The track gradient is declared once here and referenced by both engines'
-     pseudo-element rules below, which have to be written out separately. */
-  --calc-track-bg: linear-gradient(
-    to right,
-    var(--_color---bright-teal--100) 0 var(--calc-band-pos),
-    var(--_color---white--040) var(--calc-band-pos) 100%
-  );
+  --calc-track-h: 0.3125rem;
+  --calc-thumb: 1rem;
+  --calc-track-bg: linear-gradient(to right, var(--_color---bright-teal--100) 0 var(--calc-band-pos), var(--_color---white--040) var(--calc-band-pos) 100%);
+  transition: --calc-band-pos var(--anim-dur-ui) var(--anim-ease);
 }
 
-/* --------------------------------------------------------------------------
-   NUMBER INPUTS
-   The box (height, radius, border, fill, text colour) is on `.calc_input` in
-   the Designer. These are the parts with no panel control.
-   -------------------------------------------------------------------------- */
-
-.calc_input::placeholder {
-  color: var(--_color---white--050);
-  opacity: 1; /* Firefox dims placeholders by default */
-}
-
-/* Spinners: visual noise on a currency field, and the up/down arrows invite
-   clicking through 400 single-pound steps. */
 .calc_input::-webkit-outer-spin-button {
   -webkit-appearance: none;
   appearance: none;
@@ -75,37 +34,29 @@
   appearance: textfield;
 }
 
-/* --------------------------------------------------------------------------
-   BAND SLIDER
-   A native <input type="range"> in a one-line HTML Embed. Native buys keyboard
-   arrows, drag, touch and snapping for free; a div-and-pointer-events rebuild
-   buys nothing and loses all of it. min=0 max=2 step=1 gives exactly the three
-   stops the client asked for.
-
-   The two-tone track can't be done in pure CSS cross-engine (there is no
-   ::-moz-range-progress in WebKit and no ::-webkit-slider-runnable-track fill),
-   so calc.js publishes the thumb position as --calc-band-pos and the gradient
-   below reads it. JS supplies one number; CSS owns both colours.
-   -------------------------------------------------------------------------- */
-
+/* Size, cursor, margin and background are all on .calc_slider in the Designer.
+   `height` stays here because it has to track --calc-thumb, which steps up at
+   479 — the Designer cannot read an embed variable. */
 .calc_slider {
   -webkit-appearance: none;
   appearance: none;
-  display: block;
-  width: 100%;
-  height: var(--calc-thumb); /* room for the thumb, not the track */
-  margin: 0;
-  background: transparent;
-  cursor: pointer;
+  height: var(--calc-thumb);
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  /* A global input rule sets `transition: all`; on a range that would try to
+     animate width. The thumb pseudo-elements below do the real work. */
+  transition: none;
 }
 
-/* ⚠️ EVERY vendor pseudo-element below gets its OWN rule. A selector list is
-   all-or-nothing: `::-webkit-slider-runnable-track, ::-moz-range-track` in one
-   list is dropped ENTIRELY by both engines, because each fails to parse the
-   other's pseudo-element and one invalid selector invalidates the whole list.
-   The result is a slider with no track at all, in every browser. Do not merge
-   these rules to "tidy up". */
+/* `cursor: grab` is on .calc_slider in the Designer, but the panel's cursor list
+   stops at `grab` — a Pressed-state `grabbing` reports written and persists
+   nothing, so the drag half of the pair has to live here. */
+.calc_slider:active {
+  cursor: grabbing;
+}
 
+/* Each vendor pseudo-element needs its own rule — a list containing both is
+   dropped entirely by both engines. */
 .calc_slider::-webkit-slider-runnable-track {
   height: var(--calc-track-h);
   border-radius: var(--calc-track-h);
@@ -126,8 +77,9 @@
   border: 0;
   border-radius: 50%;
   background: var(--_color---white--100);
-  /* Centre the thumb on the track: half the height difference. */
   margin-top: calc((var(--calc-track-h) - var(--calc-thumb)) / 2);
+  transition: transform var(--anim-dur-ui) var(--anim-ease),
+              box-shadow var(--anim-dur-ui) var(--anim-ease);
 }
 
 .calc_slider::-moz-range-thumb {
@@ -136,46 +88,34 @@
   border: 0;
   border-radius: 50%;
   background: var(--_color---white--100);
+  transition: transform var(--anim-dur-ui) var(--anim-ease),
+              box-shadow var(--anim-dur-ui) var(--anim-ease);
 }
 
-/* --------------------------------------------------------------------------
-   ACTIVE BAND LABEL — NOT IN THE DESIGN. OFF by default.
+/* Grow on approach, then a teal halo while dragging so the thumb reads as held.
+   Scale only — width/height would move the track's centring maths. */
 
-   QA 2026-07-30: the Figma frames render all three labels in the same white at
-   the same weight; the only indication of the selected band is the thumb sitting
-   above it. Highlighting the active label was an addition of mine, and it made
-   the build differ visibly from the design, so it is parked here rather than
-   shipped.
-
-   `calc.js` still publishes `data-calc-band-value` on the root, so switching this
-   on later is uncommenting three lines — no JS change. Worth proposing: with the
-   thumb alone, the selected band is inferred from position rather than stated.
-   -------------------------------------------------------------------------- */
-
-/*
-[data-calc-band-value="0"] .calc_band-label:nth-child(1),
-[data-calc-band-value="1"] .calc_band-label:nth-child(2),
-[data-calc-band-value="2"] .calc_band-label:nth-child(3) {
-  color: var(--_color---bright-teal--100);
-  font-weight: var(--_type---weight--medium);
-}
-*/
-
-/* --------------------------------------------------------------------------
-   FOCUS
-   Webflow ships no visible focus style, and this section is three controls and
-   nothing else — it is the one place on the site where keyboard-only use is a
-   realistic path through the page.
-   -------------------------------------------------------------------------- */
-
-.calc_input:focus-visible {
-  outline: 2px solid var(--_color---bright-teal--100);
-  outline-offset: 2px;
+.calc_slider:hover::-webkit-slider-thumb {
+  transform: scale(1.12);
 }
 
-.calc_slider:focus-visible {
-  outline: none; /* the ring goes on the thumb, not the full-width input */
+.calc_slider:hover::-moz-range-thumb {
+  transform: scale(1.12);
 }
+
+.calc_slider:active::-webkit-slider-thumb {
+  transform: scale(1.2);
+  box-shadow: 0 0 0 0.5rem color-mix(in srgb, var(--_color---bright-teal--100) 22%, transparent),
+              0 4px 8px color-mix(in srgb, var(--_color---black--100) 25%, transparent);
+}
+
+.calc_slider:active::-moz-range-thumb {
+  transform: scale(1.2);
+  box-shadow: 0 0 0 0.5rem color-mix(in srgb, var(--_color---bright-teal--100) 22%, transparent),
+              0 4px 8px color-mix(in srgb, var(--_color---black--100) 25%, transparent);
+}
+
+/* The Designer's focus ring lands on the input box, not the thumb. */
 
 .calc_slider:focus-visible::-webkit-slider-thumb {
   outline: 2px solid var(--_color---bright-teal--100);
@@ -187,16 +127,13 @@
   outline-offset: 2px;
 }
 
-/* --------------------------------------------------------------------------
-   ⓘ TOOLTIP
-   Content comes from `data-calc-tip` on the element, so the copy is authored
-   in the Designer's settings panel and stays visible to whoever edits it —
-   not buried in this file. `tabindex="0"` on the element (Designer) makes the
-   :focus-visible half reachable without a mouse.
-   -------------------------------------------------------------------------- */
+/* The selected band takes the track's accent. The transition is on
+   .calc_band-label in the Designer; only the state selector needs to be here. */
 
-.calc_info {
-  position: relative;
+[data-calc-band-value="0"] .calc_band-label:nth-child(1),
+[data-calc-band-value="1"] .calc_band-label:nth-child(2),
+[data-calc-band-value="2"] .calc_band-label:nth-child(3) {
+  color: var(--_color---bright-teal--100);
 }
 
 .calc_info::after {
@@ -229,7 +166,138 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .calc_info::after {
+  [data-calc],
+  .calc_info::after,
+  .calc_band-label,
+  .calc_slider::-webkit-slider-thumb,
+  .calc_slider::-moz-range-thumb {
     transition: none;
   }
 }
+
+/* Both icons ship as inline <svg> with a viewBox and no width/height. */
+
+.calc_info svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.calc_cta-icon svg {
+  display: block;
+  width: 1.4375rem;
+  height: 1.8125rem;
+}
+
+/* Result-row rules live on .calc_result / .is-top / .is-bot in the Designer.
+   Nothing here — an earlier `+ sibling` rule doubled that padding. */
+/* Field 1's label wraps to two lines and field 2's to one. Scoped, because
+   .calc_field-head is also the step-3 band row, which must not get the floor. */
+.calc_fields .calc_field-head {
+  min-height: 2.875rem;
+}
+
+/* Scoped so the shared Button component is untouched. */
+.calc_cta-actions [data-wf--button--variant="base"] {
+  background-color: var(--_color---midnight--100);
+  border-color: var(--_color---white--030);
+}
+
+.calc_head .text-body-m {
+  line-height: 1.2;
+}
+
+@media (max-width: 767px) {
+  .calc_fields .calc_field-head {
+    min-height: 0;
+  }
+}
+
+/* The mobile frame steps type down and enlarges the slider thumb. */
+@media (max-width: 479px) {
+  [data-calc] {
+    --calc-track-h: 0.25rem;
+    --calc-thumb: 1.5rem;
+  }
+
+  .calc_slider::-webkit-slider-thumb {
+    box-shadow: 0 4px 8px color-mix(in srgb, var(--_color---black--100) 25%, transparent);
+  }
+
+  .calc_slider::-moz-range-thumb {
+    box-shadow: 0 4px 8px color-mix(in srgb, var(--_color---black--100) 25%, transparent);
+  }
+
+  .calc_head .title-m {
+    font-size: 2.25rem;
+    line-height: 1;
+  }
+
+  .calc_head .text-body-m {
+    font-size: 1rem;
+    line-height: 1.4;
+  }
+
+  .calc_head .text-eyebrow {
+    line-height: 1rem;
+    letter-spacing: 0.125em;
+  }
+
+  .calc_panel h3 {
+    line-height: 1.2;
+  }
+
+  .calc_result .text-eyebrow {
+    font-size: 0.875rem;
+    letter-spacing: 0.15em;
+  }
+
+  .calc_cta-actions .button {
+    min-height: 2.75rem;
+  }
+
+  .calc_cta-actions .button_text {
+    font-size: 0.875rem;
+    letter-spacing: 0.0714em;
+  }
+
+  .calc_cta-actions .arrow-circle {
+    width: 1.125rem;
+    height: 1.125rem;
+  }
+}
+
+/* One shared class, two sizes in the mobile frame. Keep the markers — the next
+   upsert targets them, and without them it appends a second copy. */
+
+/* == mobile-trust-icons == */
+@media (max-width: 479px) {
+  .calc_trust .calc_trust-icon {
+    width: 0.875rem;
+    height: 1.1875rem;
+  }
+
+  .calc_trust-foot .calc_trust-icon {
+    width: 1.25rem;
+  }
+}
+
+/* == /mobile-trust-icons == */
+
+/* == drag-and-focus == */
+/* While a finger is down, calc.js drives the position every frame — easing it
+   as well would make the fill trail the thumb. It also owns the snap-back
+   animation, so this transition is only the no-JS fallback. */
+[data-calc][data-calc-dragging] {
+  transition: none;
+}
+
+/* The ring belongs on the whole field — the £ prefix and /month suffix are part
+   of the control. `:has` rather than `:focus-within` so it stays keyboard-only,
+   which is also why it cannot be a Focused state in the panel. */
+.calc_input-wrap:has(.calc_input:focus-visible) {
+  outline: 2px solid var(--_color---bright-teal--100);
+  outline-offset: 2px;
+}
+
+/* == /drag-and-focus == */
