@@ -82,6 +82,7 @@
     faq: { label: "FAQ", default: true },
     anim: { label: "Motion / reveals", default: true },
     video: { label: "Video facade", default: true },
+    "insights-toc": { label: "Insights TOC", default: true },
   };
 
   const el = (window.el = window.el || {});
