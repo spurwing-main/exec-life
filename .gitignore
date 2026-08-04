@@ -12,3 +12,22 @@ outputs/
 scratchpad/
 FIGMA.md
 /figma-assets
+scratch/
+seo-backup/
+
+# Audit / spec output — regenerable, and stale the moment the site republishes
+QA-FINDINGS.md
+figma-map.json
+design-spec.*.json
+
+# Paste-ready copy for the Designer, not site source
+legal-content/
+
+# Webflow embed CSS: only the files below are versioned here. Everything else
+# under webflow/ is a working copy of an embed that lives in the Designer.
+# Adding a file to version control means un-ignoring it here as well.
+webflow/*.css
+!webflow/global-motion.css
+!webflow/global-motion-tokens.css
+!webflow/tax-calculator.css
+!webflow/who-help-tabs.css
