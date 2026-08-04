@@ -83,6 +83,7 @@
     anim: { label: "Motion / reveals", default: true },
     video: { label: "Video facade", default: true },
     calc: { label: "Tax calculator", default: true },
+    "insights-toc": { label: "Insights TOC", default: true },
   };
 
   const el = (window.el = window.el || {});

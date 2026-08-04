@@ -1,8 +1,9 @@
 #!/bin/sh
-# This repo has its own core.hooksPath (.githooks), which means the global
-# identity-check hook at ~/.git-hooks/pre-commit never runs automatically —
-# a repo-local core.hooksPath always overrides the global one. Call it
-# explicitly here so this repo stays covered by the same hard gate.
-~/.git-hooks/pre-commit || exit 1
+
+GLOBAL_HOOK="$HOME/.git-hooks/pre-commit"
+
+if [ -x "$GLOBAL_HOOK" ]; then
+  "$GLOBAL_HOOK" || exit 1
+fi
 
 npm run build && git add dist/bundle.js

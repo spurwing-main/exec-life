@@ -1,5 +1,33 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import { initFaq } from "./faq.js";
+import { BREAKPOINT_QUERIES } from "../utils/breakpoints.js";
+
+function mockMatchMedia(activeQueries = []) {
+  const records = new Map();
+
+  window.matchMedia = vi.fn((query) => {
+    if (!records.has(query)) {
+      const listeners = new Set();
+      records.set(query, {
+        media: query,
+        matches: activeQueries.includes(query),
+        addEventListener: (_event, listener) => listeners.add(listener),
+        removeEventListener: (_event, listener) => listeners.delete(listener),
+        dispatch(matches) {
+          this.matches = matches;
+          listeners.forEach((listener) => listener({ matches, media: query }));
+        },
+      });
+    }
+    return records.get(query);
+  });
+
+  return {
+    set(breakpoint, matches) {
+      records.get(BREAKPOINT_QUERIES[breakpoint]).dispatch(matches);
+    },
+  };
+}
 
 /** Build the FAQ markup the Designer produces. First item open by default. */
 function mount({ multi = false, openIndex = 0 } = {}) {
@@ -165,5 +193,52 @@ describe("initFaq — CMS Collection List defaults", () => {
     expect(
       openStates(Array.from(document.querySelectorAll("[data-faq-item]")))
     ).toEqual(["true", "true"]);
+  });
+});
+
+describe("initFaq — breakpoint activation", () => {
+  beforeEach(() => {
+    document.body.innerHTML = "";
+  });
+
+  it("is open and static outside its configured breakpoints", () => {
+    mockMatchMedia();
+    const { items, toggles } = mount();
+    const root = document.querySelector("[data-faq]");
+    root.setAttribute("data-faq-breakpoints", "mbl, mbp");
+
+    initFaq();
+
+    expect(root.getAttribute("data-faq-active")).toBe("false");
+    expect(openStates(items)).toEqual(["true", "true", "true", "true"]);
+    expect(toggles.map((toggle) => toggle.getAttribute("aria-expanded"))).toEqual([
+      null,
+      null,
+      null,
+      null,
+    ]);
+
+    toggles[1].click();
+    expect(openStates(items)).toEqual(["true", "true", "true", "true"]);
+  });
+
+  it("restores accordion state when entering an enabled breakpoint", () => {
+    const media = mockMatchMedia();
+    const { items, toggles } = mount();
+    const root = document.querySelector("[data-faq]");
+    root.setAttribute("data-faq-breakpoints", "mbp");
+
+    initFaq();
+    media.set("mbp", true);
+
+    expect(root.getAttribute("data-faq-active")).toBe("true");
+    expect(openStates(items)).toEqual(["true", "false", "false", "false"]);
+    expect(toggles[0].getAttribute("aria-expanded")).toBe("true");
+
+    toggles[2].click();
+    expect(openStates(items)).toEqual(["false", "false", "true", "false"]);
+
+    media.set("mbp", false);
+    expect(openStates(items)).toEqual(["true", "true", "true", "true"]);
   });
 });
