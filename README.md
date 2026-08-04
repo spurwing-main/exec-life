@@ -1,10 +1,12 @@
 # Exec-Life — Webflow custom code
 
-Custom front-end code for the Exec-Life Webflow site, plus a Cloudflare Worker
-shell for anything that must run server-side.
+Custom front-end code for the Exec-Life Webflow site. Features live under
+`src/modules/`, one file per feature.
 
-This is a clean scaffold derived from the Suttons & Robertsons client repo, with
-all site-specific modules removed. Add features under `src/modules/` as you go.
+**This repo is public**, and it is served from a CDN by commit SHA — that is the
+whole delivery mechanism, so it cannot be private. Keep it to the JS that ships
+to the browser: no client copy, no working copies of the Designer's CSS, no
+audit or QA output, no pages scraped from live sites. See [`.gitignore`](.gitignore).
 
 This repo has **two deployable parts**:
 
@@ -12,7 +14,6 @@ This repo has **two deployable parts**:
 |------|----------|------|------------|
 | **Loader** | `loader.js` | The visitor's browser, referenced by Webflow | A CDN (the one tag in Webflow) |
 | **Bundle** | `bundle.js` + `src/` → `dist/bundle.js` | The visitor's browser, injected by the loader | A CDN (served from `dist/bundle.js` in this repo) |
-| **Worker** | `worker/` | Cloudflare edge | Cloudflare (see [`worker/README.md`](worker/README.md)) |
 
 The **loader** is a tiny bootstrap: it picks the environment and injects the
 **bundle** (your actual site code). "The loader loads the bundle."
@@ -30,7 +31,6 @@ exec-life/
 │   └── utils/             Shared DOM / breakpoint helpers
 ├── dist/bundle.js         Built, minified bundle (committed — see "Build")
 ├── dev.mjs                Local dev server for serving source modules
-├── worker/                The Cloudflare Worker shell — see worker/README.md
 └── package.json
 ```
 
@@ -181,7 +181,6 @@ do.
 ## Prerequisites
 
 - **Node 18+** and npm
-- For the Worker: the [Wrangler CLI](https://developers.cloudflare.com/workers/wrangler/) (`npm i -g wrangler`)
 
 ```bash
 npm install        # also installs the git hooks (see "Build")
