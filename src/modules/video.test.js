@@ -9,11 +9,11 @@ const REAL = "https://www.youtube.com/watch?v=dQw4w9WgXcQ";
  */
 function mount(url = REAL) {
   document.body.innerHTML = `
-    <div class="about-service_media" data-video
+    <div class="video-facade" data-video
          data-video-url="${url}"
          data-video-title="What is Key Man Insurance">
-      <img class="about-service_video-thumb" data-video-thumb alt="poster">
-      <button class="about-service_video-play" data-video-play type="button">
+      <img class="video-facade_thumb" data-video-thumb alt="poster">
+      <button class="video-facade_play" data-video-play type="button">
         <svg viewBox="0 0 81 81" aria-hidden="true"><path d="M0 0Z"></path></svg>
       </button>
     </div>`;

@@ -11,14 +11,17 @@
  * third-party requests before anyone has asked to watch anything. The thumbnail is
  * a plain <img>, so the section costs one image until the click.
  *
- * Markup contract (see the "Service About" component):
- *   <div class="about-service_media"
+ * Markup contract. The module binds on ATTRIBUTES only — `[data-video]` and the
+ * `data-video-*` values — never on a class. The one shape it drives is the
+ * reusable **Video Facade** component:
+ *   <div class="video-facade"
  *        data-video
  *        data-video-url="https://www.youtube.com/watch?v=XXXXXXXXXXX"
  *        data-video-title="What is Key Man Insurance">
- *     <img class="about-service_video-thumb" data-video-thumb …>
- *     <button class="about-service_video-play" data-video-play type="button" aria-label="…">
+ *     <img class="video-facade_thumb" data-video-thumb …>
+ *     <button class="video-facade_play" data-video-play type="button" aria-label="…">
  *       <svg …/>
+ *       <!-- .video-facade_play-icon -->
  *     </button>
  *   </div>
  *
@@ -85,8 +88,10 @@ function play(root) {
     return;
   }
 
+  // Not a styling contract — the embed CSS matches `[data-video] > iframe`
+  // structurally, so this class is only a debugging affordance.
   const frame = document.createElement("iframe");
-  frame.className = "about-service_video-iframe";
+  frame.className = "video-facade_iframe";
   frame.src = buildEmbedUrl(id);
   frame.title = root.getAttribute("data-video-title") || "Video";
   frame.setAttribute(
