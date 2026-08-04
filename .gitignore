@@ -1,24 +1,13 @@
-.env.local
+# This repo is PUBLIC — the live Webflow tag loads loader.js from jsDelivr by
+# commit SHA, so it can't be private. It holds the JS that ships to the browser
+# and nothing else.
+#
+# Everything else goes in /local/. One rule, so there is nothing to decide and
+# nothing to add here later. See local/README.md.
+/local/
+
+# Machine junk
 node_modules/
 .pnpm-store/
+.env.local
 .DS_Store
-
-# This repo is PUBLIC. It holds the JS modules that get loaded into the Webflow
-# site and nothing else — no client copy, no Designer working copies, no audit
-# output, no pages scraped from live sites. Everything below stays on disk
-# locally and out of the repo. Think hard before un-ignoring any of it.
-
-# Reference material: Figma maps, QA findings, legal copy, SEO backup, audit
-# output. See local/README.md. Ignored wholesale, so anything dropped in there
-# is safe by default — that's what the folder is for.
-local/
-
-# Working copies of the Webflow HTML Embeds. The CSS's real home is the
-# Designer; the README in there is the consolidation write-up.
-webflow/
-
-# Tool output, recreated on demand
-figma-assets/
-scratchpad/
-test-output/
-outputs/

@@ -3,10 +3,40 @@
 Custom front-end code for the Exec-Life Webflow site. Features live under
 `src/modules/`, one file per feature.
 
-**This repo is public**, and it is served from a CDN by commit SHA — that is the
-whole delivery mechanism, so it cannot be private. Keep it to the JS that ships
-to the browser: no client copy, no working copies of the Designer's CSS, no
-audit or QA output, no pages scraped from live sites. See [`.gitignore`](.gitignore).
+## ⛔ This repo is public — working files go in `/local/`
+
+It is served from a CDN by commit SHA. That is the whole delivery mechanism, so
+it **cannot be private**. What's committed here is the JS that ships to a
+browser, and nothing else.
+
+So there is one rule, and it is the only entry in [`.gitignore`](.gitignore)
+besides machine junk:
+
+> **Anything that isn't shipped JS goes in `/local/`.** No exceptions, no
+> per-file ignore lines, no judgement call at the moment you save a file.
+
+That covers Designer working copies, Figma maps and specs, QA and audit output,
+client copy, SEO backups, screenshots, throwaway scripts — all of it. The
+convention exists because the alternative failed in a specific way: the ignore
+list used to name each stray file, which made every new document a decision, and
+the default for anything undeclared was *committed to a public repo*. Client
+material and another site's scraped markup both reached the public remote that
+way. Ignoring one directory inverts it — the safe outcome is what you get by
+doing nothing.
+
+Practical consequences:
+
+- **Writing a script, capture, report or audit? Put it under `/local/`** — not
+  the repo root, not a new top-level folder.
+- **Point tools at `/local/`.** Anything that writes to the root by default (asset
+  downloaders, screenshot tools, scratch dirs) needs its output path set, because
+  a new root directory is *not* ignored and will show up in `git status` as
+  untracked. That visibility is deliberate: treat it as the signal to move it.
+- **A new top-level directory is a red flag.** If it isn't `src/`, `dist/` or
+  `local/`, ask why it exists before committing it.
+
+[`local/README.md`](local/README.md) indexes what's in there and where each
+thing's real version lives.
 
 This repo has **two deployable parts**:
 
@@ -31,6 +61,7 @@ exec-life/
 │   └── utils/             Shared DOM / breakpoint helpers
 ├── dist/bundle.js         Built, minified bundle (committed — see "Build")
 ├── dev.mjs                Local dev server for serving source modules
+├── local/                 EVERYTHING not shipped — ignored, see local/README.md
 └── package.json
 ```
 
