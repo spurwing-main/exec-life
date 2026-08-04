@@ -5,32 +5,20 @@ node_modules/
 
 # This repo is PUBLIC. It holds the JS modules that get loaded into the Webflow
 # site and nothing else — no client copy, no Designer working copies, no audit
-# output, no scraped pages. Everything below stays on disk locally and out of
-# the repo. Think hard before un-ignoring any of it.
+# output, no pages scraped from live sites. Everything below stays on disk
+# locally and out of the repo. Think hard before un-ignoring any of it.
 
-# Designer working copies: the embed CSS's real home is the Webflow Designer,
-# and the README documented the site's internals (page ids, embed names).
+# Reference material: Figma maps, QA findings, legal copy, SEO backup, audit
+# output. See local/README.md. Ignored wholesale, so anything dropped in there
+# is safe by default — that's what the folder is for.
+local/
+
+# Working copies of the Webflow HTML Embeds. The CSS's real home is the
+# Designer; the README in there is the consolidation write-up.
 webflow/
 
-# Cloudflare Worker — scaffold only, nothing deployed depended on it.
-worker/
-
-# Reference pages scraped from live sites (other clients' markup, site ids).
-aethos.html
-
-# Local reference / scratch
+# Tool output, recreated on demand
+figma-assets/
+scratchpad/
 test-output/
 outputs/
-scratchpad/
-scratch/
-seo-backup/
-FIGMA.md
-/figma-assets
-
-# Audit / spec output — regenerable, and stale the moment the site republishes
-QA-FINDINGS.md
-figma-map.json
-design-spec.*.json
-
-# Paste-ready copy for the Designer, not site source
-legal-content/
