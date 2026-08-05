@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "skills": {
+    "ste100-writer": {
+      "source": "blagoySimandov/asd-ste100-writer-skill",
+      "sourceType": "github",
+      "skillPath": "skills/ste100-writer/SKILL.md",
+      "computedHash": "e3d21271aa5d29b3d6a691922634f47cb1f419eff07055e2c66cabca4dd85053"
+    }
+  }
+}
