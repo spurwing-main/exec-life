@@ -18,7 +18,7 @@ const tag = `<script src="https://cdn.jsdelivr.net/gh/${OWNER}/${PROJECT}@${ref}
 
 console.log("\n" + tag + "\n");
 if (dirty) {
-  console.log("⚠️  Working tree has uncommitted changes — commit & push before this SHA is live on jsDelivr.\n");
+  console.log("⚠️  Working tree has uncommitted changes. Commit and push before this SHA goes live on jsDelivr.\n");
 } else {
   console.log("✓ Clean tree. Make sure this commit is pushed to GitHub, then publish Webflow.\n");
 }

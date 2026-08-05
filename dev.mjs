@@ -4,28 +4,35 @@ import { readFile } from "node:fs/promises";
 
 const PORT = parseInt(process.env.PORT || "5500", 10);
 
-// Local dev server. Serves a *bundled* build of bundle.js (deps like embla
-// resolved, inline sourcemap) at http://localhost:${PORT}/bundle.js — the same
-// entry the production loader injects. It rebuilds on every request (esbuild
-// incremental, sub-ms), so a page refresh always runs your latest source.
+// This is the local dev server. It serves a bundled build of bundle.js at
+// http://localhost:${PORT}/bundle.js. This build resolves dependencies such
+// as embla, and it has an inline source map. This is the same entry point
+// that the production loader injects. The server rebuilds the bundle on
+// every request. The esbuild rebuild is incremental and takes under one
+// millisecond, so a page refresh always runs your latest source code.
 //
-// The Webflow loader (loader.js) probes this port and switches to it when it's
-// up — no LocalCan/tunnel required for same-machine dev in Chrome. (Safari and
-// Firefox block http://localhost from an https page as mixed content; use Chrome
-// for local, or a LocalCan HTTPS tunnel for cross-browser.)
+// The Webflow loader, in loader.js, probes this port and switches to it when
+// the port is up. This same-machine setup needs no LocalCan tunnel in
+// Chrome. Safari and Firefox block a plain http://localhost request from an
+// https page as mixed content. Use Chrome for work on the same machine. Use
+// a LocalCan HTTPS tunnel for work across different browsers.
 //
-// It ALSO serves loader.js itself, from disk, unbundled. Note what that does and
-// does not buy you: the live site's loader is pinned to a commit SHA in the
-// Webflow tag, so a loader change (a new feature flag, a dev-panel tweak) does
-// NOT reach staging until you re-tag and publish — unlike a bundle change, which
-// rides this dev server or a redeploy of dist/. Serving it here lets you test
-// loader changes locally first, against /panel.html or your own page.
+// The server also serves loader.js itself, straight from disk and not
+// bundled. This has a clear limit. The live site's loader is pinned to a
+// commit SHA in the Webflow tag. A loader change, such as a new feature flag
+// or a dev-panel change, does not reach staging until you change the tag to
+// a new commit and publish the page.
+//
+// A bundle change is different. It reaches staging through this dev server,
+// or through a redeploy of the dist folder. Serving loader.js here lets you
+// test loader changes on your own machine first, against /panel.html or
+// against your own page.
 
 const ctx = await context({
   entryPoints: ["bundle.js"],
   bundle: true,
   format: "esm",
-  write: false, // keep output in memory; we serve it directly
+  write: false, // Keep the build output in memory. The server serves the output directly from memory.
   sourcemap: "inline",
 });
 
@@ -51,7 +58,7 @@ createServer(async (req, res) => {
       res.writeHead(200, { "Content-Type": "application/javascript" });
       res.end(code);
     } catch (err) {
-      // Surface build errors in the browser console instead of a dead script.
+      // Show build errors in the browser console instead of a dead script.
       const msg = (err && err.message) || String(err);
       console.error("[dev] build failed:\n" + msg);
       res.writeHead(200, { "Content-Type": "application/javascript" });
@@ -60,8 +67,10 @@ createServer(async (req, res) => {
     return;
   }
 
-  // loader.js straight off disk. Lets you iterate on the loader and the dev
-  // panel locally; the live tag still needs a re-tag + publish to pick it up.
+  // This serves loader.js straight from disk. It lets you test changes to
+  // the loader and the dev panel on your own machine. The live tag still
+  // needs a new commit tag and a publish action before it picks up those
+  // changes.
   if (path === "/loader.js") {
     try {
       const code = await readFile(new URL("./loader.js", import.meta.url), "utf8");
@@ -74,7 +83,7 @@ createServer(async (req, res) => {
     return;
   }
 
-  // A bare harness page for exercising the loader + dev panel without Webflow.
+  // A plain test page that runs the loader and the dev panel without Webflow.
   if (path === "/panel.html") {
     res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
     res.end(`<!doctype html><meta charset="utf-8"><title>loader + dev panel</title>

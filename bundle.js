@@ -1,19 +1,21 @@
-// Exec-Life client bundle — entry point.
+// Exec-Life client bundle: entry point.
 //
-// Imports each feature module and boots it. One file per feature under
-// src/modules/; shared helpers live under src/utils/.
+// Imports each feature module and boots it. One file per feature lives under
+// src/modules/. Shared helpers live under src/utils/.
 //
 // FEATURE FLAGS
-// Every module is registered here against a flag name from the loader's FEATURES
-// registry, and only boots if that flag is on. So a module is turned off by
-// flipping a toggle in the dev panel (or ?off=<name>), never by commenting code
-// out. The matching CSS in Webflow gates on `html[data-el-on~="<name>"]`, which
-// the loader sets before this file runs — so the CSS half switches off too, and
-// there is nothing to comment out there either. See README "Feature flags".
+// Every module is registered here against a flag name from the loader's
+// FEATURES registry. A module boots only if its flag is on.
 //
-// Each module is still registered on window.el.functions regardless of its flag,
-// so it can be re-run by hand (e.g. after a CMS load) or poked at in the console
-// even while switched off.
+// To turn a module off, flip a toggle in the dev panel, or add ?off=<name> to
+// the URL. Never comment the code out. The matching CSS in Webflow gates on
+// `html[data-el-on~="<name>"]`, and the loader sets that attribute before
+// this file runs. So the CSS turns off too, and there is nothing to comment
+// out on that side either. See README "Feature flags".
+//
+// Each module stays registered on window.el.functions even when its flag is
+// off. You can still run a module by hand, for example after a CMS load. You
+// can also call it from the console.
 
 import { BREAKPOINT_PX, BREAKPOINT_QUERIES } from "./src/utils/breakpoints.js";
 import { initTabs } from "./src/modules/tabs.js";
@@ -44,9 +46,9 @@ el.functions.initInsightsToc = initInsightsToc;
 el.functions.initInsurerSort = initInsurerSort;
 
 /**
- * flag → init. Order matters: `anim` runs first because it is the only module
- * that hides anything, so it should be revealing content before anything else
- * has a chance to throw.
+ * Maps each flag to its init function. Order matters: `anim` runs first
+ * because it is the only module that hides content. It must reveal that
+ * content before any later module has a chance to throw.
  */
 const MODULES = [
   ["anim", initAnim],
@@ -61,14 +63,14 @@ const MODULES = [
 ];
 
 /**
- * Boot each module in isolation, and only if its flag is on.
+ * Boot each module on its own, and only if its flag is on.
  *
- * The try/catch matters most for `anim`: it briefly hides content and then
- * reveals it, so if an unrelated module (a carousel on a page that has none, say)
- * threw first, headings could stay hidden site-wide.
+ * The try/catch matters most for `anim`. It briefly hides content and then
+ * reveals it. If an unrelated module threw first, for example the carousel
+ * module on a page with no carousel, headings could stay hidden site-wide.
  *
- * An unknown flag defaults to ON, so a module added here before an updated loader
- * ships is never silently dead.
+ * An unknown flag defaults to ON. So a module added here before an updated
+ * loader ships is never silently dead.
  */
 function bootAll() {
   MODULES.forEach(([name, init]) => {
@@ -87,20 +89,21 @@ function bootAll() {
 }
 
 /**
- * WAIT FOR THE DOM. This is not boilerplate — booting early silently breaks
- * every module.
+ * WAIT FOR THE DOM. This is not boilerplate. If you boot early, every module
+ * breaks, and it fails silently.
  *
  * The loader appends this bundle as `<script type="module">` the moment its
- * LocalCan probe resolves, which can be part-way through parsing the body. A
- * module script then runs as soon as it is fetched, so `document` may only
- * contain the first section or two. Every module here queries the document once
- * at init, so anything further down the page simply does not exist yet and is
- * never wired up: on the homepage that meant one of eight headings got its reveal
- * and the rest were skipped, and the same applies to any FAQ, carousel or tab
- * group below the fold.
+ * LocalCan probe resolves. That can happen before the body is fully parsed. A
+ * module script then runs as soon as it is fetched, so `document` may
+ * contain only the first section or two. Every module here queries the
+ * document once, at init, so anything further down the page does not exist
+ * yet and is never wired up: on the homepage, that meant only one of eight
+ * headings got its reveal. The rest were skipped. The same problem applies to
+ * any FAQ, carousel, or tab group below the fold.
  *
- * It failed quietly — no error, just a page where the top works and the bottom
- * doesn't — which is exactly the shape of bug worth a comment this long.
+ * It failed quietly: no error, just a page where the top half worked and the
+ * bottom half did not. That is exactly the kind of bug worth a comment this
+ * long.
  */
 if (document.readyState === "loading") {
   document.addEventListener("DOMContentLoaded", bootAll, { once: true });

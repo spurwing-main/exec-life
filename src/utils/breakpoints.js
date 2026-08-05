@@ -1,8 +1,9 @@
 /**
- * Single source of truth for the site's breakpoints. Mirrors Webflow's own
- * breakpoints so JS reasons about the same boundaries the Designer does. Exposed
- * on `window.el.defs` (see bundle.js) for inline scripts / debugging; modules
- * that need a breakpoint read it from here rather than hard-coding widths.
+ * Single source of truth for the site's breakpoints. It mirrors Webflow's own
+ * breakpoints, so JS reasons about the same boundaries as the Designer. It is
+ * exposed on `window.el.defs` for inline scripts and for debugging; bundle.js
+ * sets this up. A module that needs a breakpoint must read it from here. Do
+ * not hard-code a width.
  */
 export const BREAKPOINT_PX = Object.freeze({
 	desktopMin: 992,
