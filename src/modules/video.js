@@ -1,19 +1,20 @@
 /**
- * Video facade — thumbnail + custom play button, YouTube loaded only on click.
+ * Video facade: thumbnail and custom play button, YouTube loaded only on click.
  *
- * Same contract as the other modules: the DOM owns all visual state through CSS,
- * and this module only injects the iframe and flips a single attribute —
- * `data-video-state="playing"` — on the root. The play button's fade-out and the
- * iframe's positioning are driven by the section's scoped Embed CSS; nothing here
- * sets inline styles.
+ * This module follows the same contract as the other modules. The DOM owns
+ * all visual state through CSS. This module only injects the iframe and
+ * flips a single attribute, `data-video-state="playing"`, on the root. The
+ * section's scoped Embed CSS drives the play button's fade-out and the
+ * iframe's positioning. Nothing here sets inline styles.
  *
- * WHY A FACADE. Embedding a YouTube iframe on load costs ~600kb+ of JS and several
- * third-party requests before anyone has asked to watch anything. The thumbnail is
- * a plain <img>, so the section costs one image until the click.
+ * WHY A FACADE. If this module embeds a YouTube iframe on load, that costs
+ * 600kb+ of JS and several third-party requests, before anyone even asks
+ * to watch anything. The thumbnail is a plain <img>, so the section costs
+ * one image until the click.
  *
- * Markup contract. The module binds on ATTRIBUTES only — `[data-video]` and the
- * `data-video-*` values — never on a class. The one shape it drives is the
- * reusable **Video Facade** component:
+ * Markup contract. This module binds on ATTRIBUTES only, `[data-video]` and
+ * the `data-video-*` values, never on a class. The one shape it drives is
+ * the reusable **Video Facade** component:
  *   <div class="video-facade"
  *        data-video
  *        data-video-url="https://www.youtube.com/watch?v=XXXXXXXXXXX"
@@ -26,34 +27,40 @@
  *   </div>
  *
  * Behaviour:
- *   - Clicking the button, or anywhere on the panel, starts playback.
- *   - The iframe is appended and sits ON TOP of the thumbnail and button (z-index
- *     in the Embed CSS); neither is removed from the DOM. This keeps the markup
- *     the Designer shows intact, and means a failed iframe leaves the poster
- *     visible rather than a black hole.
- *   - Idempotent: a second click while playing is a no-op, so the iframe can
- *     never be injected twice (and playback is never restarted).
- *   - `youtube-nocookie.com` is used so nothing is written until playback.
+ *   - If someone clicks the button, or anywhere on the panel, playback
+ *     starts.
+ *   - This module appends the iframe. The iframe sits ON TOP of the
+ *     thumbnail and button. The z-index for this lives in the Embed CSS.
+ *     Neither element is removed from the DOM. This keeps the markup the
+ *     Designer shows intact, and means a failed iframe leaves the poster
+ *     visible instead of a black hole.
+ *   - Idempotent: a second click, while the video plays, is a no-op. So
+ *     this module never injects the iframe twice, and playback never
+ *     restarts.
+ *   - This module uses `youtube-nocookie.com`, so nothing is written until
+ *     playback.
  *
- * THE URL MAY NOT CONTAIN A VIDEO. `data-video-url` is authored in the Designer,
- * so it can legitimately hold anything — a channel link, a /redirect?… bounce, an
- * empty string. `youTubeVideoId` returns null for those and we open the URL in a
- * new tab instead of injecting a broken player. That is a deliberate fallback, not
- * a silent failure: it also warns, because a marketing link sitting in a video
- * slot is nearly always a content mistake worth seeing in the console.
+ * THE URL MAY NOT CONTAIN A VIDEO. `data-video-url` is authored in the
+ * Designer, so it can legitimately hold anything: a channel link, a
+ * /redirect?… bounce, an empty string. `youTubeVideoId` returns null for
+ * those, and this module opens the URL in a new tab. It does not inject a
+ * broken player. That is a deliberate fallback, not a silent failure. This
+ * module also warns, because a marketing link in a video slot is nearly
+ * always a content mistake that someone should see in the console.
  */
 
 import { qsa, qs, closestWithin } from "../utils/dom.js";
 
-/** Optional site-wide default, used when an instance has no usable URL of its own. */
+/** Optional site-wide default. This module uses it when an instance has no usable URL of its own. */
 export const FALLBACK_VIDEO_ID = "";
 
 /**
- * Pull an 11-character YouTube id out of any of the forms an author might paste.
+ * Pull an 11-character YouTube id out of any form an author might paste.
  *
- * Covers watch?v=, youtu.be/, /embed/, /v/, /shorts/ and a bare id. Deliberately
- * does NOT try to be clever about /redirect?…&q=… or /@channel URLs — those have
- * no video in them, and guessing would produce a player for the wrong thing.
+ * This function covers watch?v=, youtu.be/, /embed/, /v/, /shorts/, and a
+ * bare id. It deliberately does not try to be clever about /redirect?…&q=…
+ * or /@channel URLs. Those have no video in them, and a guess would
+ * produce a player for the wrong thing.
  */
 export function youTubeVideoId(url) {
   if (!url) return null;
@@ -88,8 +95,9 @@ function play(root) {
     return;
   }
 
-  // Not a styling contract — the embed CSS matches `[data-video] > iframe`
-  // structurally, so this class is only a debugging affordance.
+  // This class is not a styling contract. The embed CSS matches
+  // `[data-video] > iframe` structurally, so this class exists only to
+  // help someone find and fix problems.
   const frame = document.createElement("iframe");
   frame.className = "video-facade_iframe";
   frame.src = buildEmbedUrl(id);
@@ -113,8 +121,8 @@ function setupVideo(root) {
     button.setAttribute("aria-label", "Play video");
   }
 
-  // Delegated: one listener covers the button and the surrounding poster, and
-  // survives the thumbnail being swapped in the Designer.
+  // Delegated: one listener covers the button and the poster around it,
+  // and continues to work if someone swaps the thumbnail in the Designer.
   root.addEventListener("click", (e) => {
     if (root.getAttribute("data-video-state") === "playing") return;
     // Ignore clicks that land inside the player once it exists.

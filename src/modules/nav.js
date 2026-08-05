@@ -1,9 +1,9 @@
 /**
- * Nav shell — auto-hide on scroll + dropdown panels + mobile menu.
+ * Nav shell: auto-hide on scroll, dropdown panels, and mobile menu.
  *
- * Markup contract (in .nav_shell or its parent):
+ * Markup contract. Put these attributes in .nav_shell or in its parent:
  *   data-nav                  → auto-hide nav bar
- *   data-nav-threshold        → optional reveal zone ("100vh", "80vh", or px)
+ *   data-nav-threshold        → optional reveal zone: "100vh", "80vh", or px
  *   data-nav-trigger="{name}" → desktop dropdown trigger
  *   data-nav-panel="{name}"   → desktop dropdown panel
  *   data-nav-menu-toggle      → mobile hamburger
@@ -11,10 +11,11 @@
  *   data-nav-mobile-trigger   → drill-down link inside mobile
  *   data-nav-back             → back button inside mobile view
  *
- * Desktop dropdown panels close on:
- *   - pointer leaving the [trigger + panel] hover zone
- *   - pointer entering a trigger with no panel while a panel is open
- *   - scroll, Escape, focus leaving the nav, click outside
+ * Desktop dropdown panels close when:
+ *   - the pointer leaves the [trigger + panel] hover zone
+ *   - the pointer enters a trigger that has no panel, while a panel is open
+ *   - the user scrolls, presses Escape, moves focus out of the nav, or
+ *     clicks outside
  */
 
 import { qsa } from "../utils/dom.js";
@@ -59,7 +60,7 @@ function setupScrollHide(nav) {
 }
 
 /* ------------------------------------------------------------------------- */
-/*  Dropdown panels + mobile menu                                            */
+/*  Dropdown panels and mobile menu                                          */
 /* ------------------------------------------------------------------------- */
 
 const uid = () => Math.random().toString(36).slice(2, 8);
@@ -140,7 +141,7 @@ function setupShell(root) {
       t.setAttribute("aria-controls", p.id);
     }
 
-    /* Click — toggle on touch, no-op on desktop/hover (unless already open) */
+    /* Click: toggle on touch. No-op on desktop or hover, unless already open. */
     t.addEventListener("click", (e) => {
       if (desktopMouse()) {
         if (panelFor(name)?.classList.contains("is-open")) closePanels();
@@ -150,8 +151,9 @@ function setupShell(root) {
       panelFor(name)?.classList.contains("is-open") ? closePanels() : openPanel(name);
     });
 
-    /* Hover open with 70ms debounce.
-       If the trigger has no panel (e.g. Insurers, About), close any open panels. */
+    /* Hover open, with a 70ms debounce.
+       If the trigger has no panel, for example Insurers or About, this
+       closes any open panels. */
     t.addEventListener("mouseenter", () => {
       if (!desktopMouse()) return;
       cancelTimers();
@@ -162,9 +164,10 @@ function setupShell(root) {
       }
     });
 
-    /* Hover leave — if this trigger has a panel, start a short timer so moving
-       into the panel doesn't close. Triggers without a panel already closed
-       on mouseenter, so no action needed. */
+    /* Hover leave. If this trigger has a panel, start a short timer, so the
+       panel does not close if the pointer moves into it. A trigger without
+       a panel already closed on mouseenter, so there is nothing to do
+       here. */
     t.addEventListener("mouseleave", () => {
       if (!desktopMouse() || !p) return;
       cancelTimers();
@@ -187,7 +190,7 @@ function setupShell(root) {
     });
   });
 
-  /* Panel hover — cancel close when entering, close when leaving */
+  /* Panel hover: cancel the close timer on enter, start it again on leave. */
   panels.forEach((p) => {
     p.addEventListener("mouseenter", () => {
       if (!desktopMouse()) return;
@@ -214,7 +217,7 @@ function setupShell(root) {
     });
   });
 
-  /* Scroll closes panels */
+  /* Scroll closes panels. */
   window.addEventListener(
     "scroll",
     () => {
@@ -223,7 +226,7 @@ function setupShell(root) {
     { passive: true },
   );
 
-  /* Focus leaving the nav closes panels */
+  /* This module closes panels when focus leaves the nav. */
   root.addEventListener("focusout", () => {
     setTimeout(() => {
       if (panelsOpen() && !root.contains(document.activeElement)) closePanels();
@@ -309,7 +312,7 @@ function setupShell(root) {
     }
   });
 
-  /* Real-link tap closes menu */
+  /* This module closes the menu when someone taps a real link. */
   root.addEventListener("click", (e) => {
     if (!menuOpen()) return;
     const link = e.target.closest("a[href]");
@@ -318,7 +321,7 @@ function setupShell(root) {
     if (href && href !== "#") setMenu(false);
   });
 
-  /* ---- Shared: Escape + outside click ---- */
+  /* ---- Shared: Escape and outside click ---- */
   document.addEventListener("keydown", (e) => {
     if (e.key !== "Escape") return;
     closePanels();

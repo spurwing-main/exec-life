@@ -1,20 +1,22 @@
 /**
- * Auto-advancing, CSS-backed tabs.
+ * Tabs that advance automatically, backed by CSS.
  *
- * The DOM owns all visual state through CSS. This module flips attributes only:
- * `data-state="active"` on the active tab + panel, `data-active` (1-based index)
- * and `data-visible` on the root. Everything else (which panel shows, the
- * cross-fade, the progress bar, the dwell timing) is driven by the scoped CSS in
- * the component's Embed.
+ * The DOM owns all visual state through CSS. This module only flips
+ * attributes: `data-state="active"` on the active tab and panel,
+ * `data-active`, a 1-based index, and `data-visible` on the root. The
+ * scoped CSS in the component's Embed drives everything else, such as
+ * which panel shows, the cross-fade, the progress bar, and the dwell
+ * timing.
  *
- * POSITIONAL CONTRACT — the tabs and panels are Webflow Collection Lists, so
- * per-item attributes cannot be authored in the Designer. There is no
- * `data-tab="single"` / `data-panel="single"` any more: identity is position.
- * Tab N pairs with panel N, and the module stamps state onto the elements
- * themselves so neither the CSS nor the JS hardcodes how many items exist.
- * Adding a fourth Client Type in the CMS needs no code change.
+ * POSITIONAL CONTRACT. The tabs and panels are Webflow Collection Lists, so
+ * an author cannot set per-item attributes in the Designer. There is no
+ * `data-tab="single"` or `data-panel="single"` any more. Identity is
+ * position. Tab N pairs with panel N, and the module stamps state onto the
+ * elements themselves, so neither the CSS nor the JS hardcodes how many
+ * items exist. If someone adds a fourth Client Type in the CMS, that needs
+ * no code change.
  *
- * Markup contract (see the "who-help" section):
+ * Markup contract. See the "who-help" section:
  *   <div data-tabs data-active="1" data-visible="false">
  *     <div data-tablist>                        <!-- Collection List -->
  *       <div>…<span class="who-help_tab-bar"></span></div>   <!-- item 1 -->
@@ -26,21 +28,21 @@
  *     </div>
  *   </div>
  *
- * Tabs and panels are the DIRECT CHILDREN of the two containers, which is what
- * the Collection List renders (`.w-dyn-items` > `.w-dyn-item`). The containers
- * may sit at any depth under the root — Webflow wraps each list in a
- * `display: contents` div.
+ * Tabs and panels are the DIRECT CHILDREN of the two containers. That is
+ * what the Collection List renders: `.w-dyn-items` > `.w-dyn-item`. The
+ * containers can sit at any depth under the root. Webflow wraps each list
+ * in a `display: contents` div.
  *
- * ARIA is applied at runtime for the same reason: roles cannot be set per item
- * on a Collection List.
+ * This module applies ARIA at runtime for the same reason. An author
+ * cannot set roles per item on a Collection List.
  *
  * Timing model:
- *   - Motion allowed: the active tab's `.who-help_tab-bar` runs the `tabFill`
- *     CSS animation. We advance on its `animationend`. Off-screen, CSS pauses
- *     the animation (gated on `data-visible`), so the timer only runs while the
- *     section is visible.
- *   - Reduced motion: no CSS animation fires, so we advance with a setInterval
- *     that only ticks while visible.
+ *   - Motion allowed: the active tab's `.who-help_tab-bar` runs the
+ *     `tabFill` CSS animation. This module advances on its `animationend`.
+ *     Off-screen, CSS pauses the animation, gated on `data-visible`, so the
+ *     timer only runs while the section is visible.
+ *   - Reduced motion: no CSS animation fires, so this module advances with a
+ *     setInterval that only ticks while visible.
  */
 
 import { qsa, closestWithin } from "../utils/dom.js";
@@ -51,7 +53,7 @@ const reduceMotion = () =>
 
 let uid = 0;
 
-/** Read `--tab-duration` (e.g. "6s" / "6000ms") off the root; fall back to default. */
+/** Read `--tab-duration` off the root, for example "6s" or "6000ms". Fall back to the default. */
 function durationFor(root) {
   const raw = getComputedStyle(root).getPropertyValue("--tab-duration").trim();
   if (!raw) return DEFAULT_DURATION_MS;
@@ -60,7 +62,7 @@ function durationFor(root) {
   return parseFloat(raw) || DEFAULT_DURATION_MS;
 }
 
-/** Direct children of the container matching `selector`, in document order. */
+/** Direct children of the container that matches `selector`, in document order. */
 function itemsIn(root, selector) {
   const container = root.querySelector(selector);
   return container ? Array.from(container.children) : [];
@@ -70,7 +72,7 @@ function setupTabs(root) {
   const tabs = itemsIn(root, "[data-tablist]");
   const panels = itemsIn(root, "[data-panels]");
 
-  // Nothing to cycle, or the two lists disagree — leave the DOM untouched so
+  // Nothing to cycle, or the two lists disagree. Leave the DOM untouched, so
   // the CSS fail-open path keeps the first panel visible.
   if (tabs.length < 2 || panels.length !== tabs.length) return;
 
@@ -78,7 +80,7 @@ function setupTabs(root) {
   let active = -1;
   let interval = null;
 
-  // --- a11y wiring (once) --------------------------------------------------
+  // --- accessibility (a11y) wiring, once -----------------------------------
 
   const list = root.querySelector("[data-tablist]");
   if (list) list.setAttribute("role", "tablist");
@@ -94,7 +96,7 @@ function setupTabs(root) {
 
   // --- State ---------------------------------------------------------------
 
-  /** Normalise any integer into a valid index (wraps both directions). */
+  /** Normalise any integer into a valid index. This wraps both directions. */
   const wrap = (i) => ((i % tabs.length) + tabs.length) % tabs.length;
 
   function setActive(index) {
@@ -184,12 +186,14 @@ function setupTabs(root) {
     tabs[next].focus();
   });
 
-  // Seed from the Designer's `data-active` (1-based; anything invalid → first).
+  // Seed from the Designer's `data-active` value, a 1-based index.
+  // Anything invalid falls back to the first tab.
   const seed = parseInt(root.getAttribute("data-active"), 10);
   setActive(Number.isFinite(seed) && seed > 0 ? seed - 1 : 0);
 
-  // Tell the CSS that JS owns state now, so it can stop favouring :first-child.
-  // Set LAST: until it lands, the fail-open rules keep panel 1 on screen.
+  // Tell the CSS that JS now owns state, so the CSS no longer needs to
+  // favour :first-child. Set this LAST. Until it lands, the fail-open
+  // rules keep panel 1 on screen.
   root.setAttribute("data-ready", "");
 }
 
