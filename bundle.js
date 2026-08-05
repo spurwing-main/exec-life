@@ -24,6 +24,7 @@ import { initAnim } from "./src/modules/anim.js";
 import { initVideo } from "./src/modules/video.js";
 import { initCalc } from "./src/modules/calc.js";
 import { initInsightsToc } from "./src/modules/insights-toc.js";
+import { initInsurerSort } from "./src/modules/insurer-sort.js";
 
 const el = (window.el = window.el || {});
 el.functions = el.functions || {};
@@ -40,6 +41,7 @@ el.functions.initAnim = initAnim;
 el.functions.initVideo = initVideo;
 el.functions.initCalc = initCalc;
 el.functions.initInsightsToc = initInsightsToc;
+el.functions.initInsurerSort = initInsurerSort;
 
 /**
  * flag → init. Order matters: `anim` runs first because it is the only module
@@ -55,6 +57,7 @@ const MODULES = [
   ["video", initVideo],
   ["calc", initCalc],
   ["insights-toc", initInsightsToc],
+  ["insurer-sort", initInsurerSort],
 ];
 
 /**

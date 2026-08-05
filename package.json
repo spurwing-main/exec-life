@@ -17,6 +17,7 @@
 	},
 	"dependencies": {
 		"embla-carousel": "^8.6.0",
-		"embla-carousel-autoplay": "^8.6.0"
+		"embla-carousel-autoplay": "^8.6.0",
+		"skills": "^1.5.18"
 	}
 }
