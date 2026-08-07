@@ -339,7 +339,7 @@
     s.src = source.url;
     s.onload = () => {
       clearTimeout(unhideTimer);
-      console.log("[el] loaded", source.kind, source.url);
+      if (devMode) console.log("[el] loaded", source.kind, source.url);
     };
     s.onerror = () => {
       console.error("[el] bundle failed:", source.url);

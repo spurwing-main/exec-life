@@ -2,6 +2,14 @@
  * Shared DOM utilities used across modules.
  */
 
+/** True if the user's OS setting asks for reduced motion. */
+export function reduceMotion() {
+  return (
+    typeof window.matchMedia === "function" &&
+    window.matchMedia("(prefers-reduced-motion: reduce)").matches
+  );
+}
+
 /** querySelectorAll as array */
 export function qsa(root, selector) {
   return Array.from(root.querySelectorAll(selector));

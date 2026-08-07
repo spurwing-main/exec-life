@@ -41,11 +41,7 @@
 
 import EmblaCarousel from "embla-carousel";
 import Autoplay from "embla-carousel-autoplay";
-import { qs, qsa } from "../utils/dom.js";
-
-const reduceMotion = () =>
-  typeof window.matchMedia === "function" &&
-  window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+import { qs, qsa, reduceMotion } from "../utils/dom.js";
 
 // The presentation for the carousels lives in the site's global
 // interactions Embed in Webflow, NOT here. This covers the grab and

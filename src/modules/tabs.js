@@ -45,11 +45,9 @@
  *     setInterval that only ticks while visible.
  */
 
-import { qsa, closestWithin } from "../utils/dom.js";
+import { qsa, closestWithin, reduceMotion } from "../utils/dom.js";
 
 const DEFAULT_DURATION_MS = 6000;
-const reduceMotion = () =>
-  window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
 let uid = 0;
 

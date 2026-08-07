@@ -75,7 +75,7 @@ const MODULES = [
 function bootAll() {
   MODULES.forEach(([name, init]) => {
     if (el.flags && !el.flags.enabled(name)) {
-      console.info(`[el] ${name} off (feature flag)`);
+      if (el.boot?.devMode) console.info(`[el] ${name} off (feature flag)`);
       return;
     }
     try {
