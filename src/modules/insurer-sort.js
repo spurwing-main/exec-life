@@ -2,17 +2,9 @@
  * Sort controls for the insurer comparison.
  *
  * The filter form has radio inputs for 3 sort fields.
- * Finsweet List Sort uses each input to select the ascending or descending direction.
- * This behavior conflicts with the interface because each radio input has one direction.
- * Thus, these controls do not have `fs-list-*` attributes.
- * This module uses these control IDs:
- *
- *   life-payout-rate-desc
- *   life-payout-rate-asc
- *   overall-payout-rate-desc
- *   overall-payout-rate-asc
- *   financial-rating-desc
- *   financial-rating-asc
+ * The HTML defines each field and direction with data attributes.
+ * All controls use the `sort` name.
+ * The selected control sets the first sort when the list starts.
  *
  * The collection values keep their `fs-list-field` attributes.
  * This module adds a sort hook to the Finsweet List instance.
@@ -21,15 +13,7 @@
 
 const FORM_SELECTOR = "#wf-form-insurers-filters";
 const LIST_SELECTOR = '[fs-list-element="list"]';
-
-export const SORT_CONTROLS = [
-  { id: "life-payout-rate-desc", fieldKey: "life-payout-rate", direction: "desc" },
-  { id: "life-payout-rate-asc", fieldKey: "life-payout-rate", direction: "asc" },
-  { id: "overall-payout-rate-desc", fieldKey: "overall-payout-rate", direction: "desc" },
-  { id: "overall-payout-rate-asc", fieldKey: "overall-payout-rate", direction: "asc" },
-  { id: "financial-rating-desc", fieldKey: "financial-rating", direction: "desc" },
-  { id: "financial-rating-asc", fieldKey: "financial-rating", direction: "asc" },
-];
+const CONTROL_SELECTOR = 'input[name="sort"][data-field-key][data-sort-direction]';
 
 const firstValue = (value) => (Array.isArray(value) ? value[0] : value);
 
@@ -101,33 +85,41 @@ function setupControls(form, controls, listInstances) {
     listInstance.addHook("sort", (items) => sortListItems(items, listInstance.sorting.value));
   }
 
+  const applySort = ({ fieldKey, direction }, interacted) => {
+    listInstance.sorting.value = { fieldKey, direction, interacted };
+
+    // The native sort function starts the sort lifecycle after a value changes.
+    // If there is no native sort trigger, this module starts the lifecycle.
+    if (!hasSortHook) {
+      listInstance.triggerHook("sort", {
+        scrollToAnchor: interacted,
+        resetCurrentPage: true,
+      });
+    }
+  };
+
   controls.forEach(({ input, fieldKey, direction }) => {
     // Use `click` because a selected radio input does not cause a `change` event.
-    input.addEventListener("click", () => {
-      listInstance.sorting.value = { fieldKey, direction, interacted: true };
-
-      // The native sort function starts the sort lifecycle after a value changes.
-      // If there is no native sort trigger, this module starts the lifecycle.
-      if (!hasSortHook) {
-        listInstance.triggerHook("sort", {
-          scrollToAnchor: true,
-          resetCurrentPage: true,
-        });
-      }
-    });
+    input.addEventListener("click", () => applySort({ fieldKey, direction }, true));
   });
 
   form.setAttribute("data-insurer-sort-ready", "");
+
+  const selectedControl = controls.find(({ input }) => input.checked);
+  if (selectedControl) applySort(selectedControl, false);
 }
 
 export function initInsurerSort(root = document) {
   const form = root.querySelector(FORM_SELECTOR);
   if (!form || form.hasAttribute("data-insurer-sort-queued")) return;
 
-  const controls = SORT_CONTROLS.map((config) => ({
-    ...config,
-    input: form.querySelector(`#${config.id}`),
-  })).filter(({ input }) => input);
+  const controls = [...form.querySelectorAll(CONTROL_SELECTOR)]
+    .map((input) => ({
+      input,
+      fieldKey: input.dataset.fieldKey?.trim(),
+      direction: input.dataset.sortDirection?.trim(),
+    }))
+    .filter(({ fieldKey, direction }) => fieldKey && (direction === "asc" || direction === "desc"));
 
   if (!controls.length) return;
 

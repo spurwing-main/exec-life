@@ -5,6 +5,7 @@
 # Everything else goes in /local/. One rule, so there is nothing to decide and
 # nothing to add here later. See local/README.md.
 /local/
+/outputs/
 
 # Machine junk
 node_modules/

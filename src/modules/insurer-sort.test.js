@@ -1,13 +1,25 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { initInsurerSort, SORT_CONTROLS, sortListItems } from "./insurer-sort.js";
+import { initInsurerSort, sortListItems } from "./insurer-sort.js";
 
-function mountControls() {
+const CONTROL_CONFIGS = [
+  { id: "life-payout-rate-desc", fieldKey: "life-payout-rate", direction: "desc" },
+  { id: "life-payout-rate-asc", fieldKey: "life-payout-rate", direction: "asc" },
+  { id: "overall-payout-rate-desc", fieldKey: "overall-payout-rate", direction: "desc" },
+  { id: "overall-payout-rate-asc", fieldKey: "overall-payout-rate", direction: "asc" },
+  { id: "financial-rating-desc", fieldKey: "financial-rating", direction: "desc" },
+  { id: "financial-rating-asc", fieldKey: "financial-rating", direction: "asc" },
+];
+
+function mountControls(checkedId = "life-payout-rate-desc") {
   document.body.innerHTML = `
     <section data-faq>
       <form id="wf-form-insurers-filters">
-        ${SORT_CONTROLS.map(
-          ({ id }) => `<input id="${id}" type="radio" name="${id.split("-").slice(0, -1).join("-")}">`
+        ${CONTROL_CONFIGS.map(
+          ({ id, fieldKey, direction }) =>
+            `<input id="${id}" type="radio" name="sort" data-field-key="${fieldKey}" data-sort-direction="${direction}" ${
+              id === checkedId ? "checked" : ""
+            }>`
         ).join("")}
       </form>
       <div fs-list-element="list"></div>
@@ -37,12 +49,13 @@ beforeEach(() => {
 });
 
 describe("initInsurerSort", () => {
-  it.each(SORT_CONTROLS)("maps $id to $fieldKey $direction", (config) => {
+  it.each(CONTROL_CONFIGS)("reads $fieldKey $direction from the $id control", (config) => {
     initInsurerSort();
 
     const instance = makeListInstance();
     const [, ready] = window.FinsweetAttributes[0];
     ready([instance]);
+    instance.triggerHook.mockClear();
 
     document.getElementById(config.id).click();
 
@@ -55,6 +68,36 @@ describe("initInsurerSort", () => {
       scrollToAnchor: true,
       resetCurrentPage: true,
     });
+  });
+
+  it("applies the checked control when the list starts", () => {
+    initInsurerSort();
+
+    const instance = makeListInstance();
+    const [, ready] = window.FinsweetAttributes[0];
+    ready([instance]);
+
+    expect(instance.sorting.value).toEqual({
+      fieldKey: "life-payout-rate",
+      direction: "desc",
+      interacted: false,
+    });
+    expect(instance.triggerHook).toHaveBeenCalledWith("sort", {
+      scrollToAnchor: false,
+      resetCurrentPage: true,
+    });
+  });
+
+  it("does not start a sort when no control is checked", () => {
+    mountControls(null);
+    initInsurerSort();
+
+    const instance = makeListInstance();
+    const [, ready] = window.FinsweetAttributes[0];
+    ready([instance]);
+
+    expect(instance.sorting.value).toEqual({});
+    expect(instance.triggerHook).not.toHaveBeenCalled();
   });
 
   it("queues and wires the form only once", () => {

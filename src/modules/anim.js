@@ -83,15 +83,15 @@ import { qsa } from "../utils/dom.js";
  * Reveal it. Do not skip it. A skipped element would still match the CSS
  * hold rule, with nothing left to release it.
  */
-const EXCLUDE = "[data-carousel-viewport], .w-richtext";
+const EXCLUDE = "[data-carousel-viewport], .w-richtext, [fs-list-element='list']";
 
 /** Long enough to cover a slow bundle load. Short enough that a failure isn't felt. */
 const GRACE_MS = 2500;
 
 /** The Designer canvas and the Editor must never show hidden content. */
 function isAuthoringSurface() {
-  const cls = document.documentElement.classList;
-  return cls.contains("wf-design-mode") || cls.contains("w-editor");
+	const cls = document.documentElement.classList;
+	return cls.contains("wf-design-mode") || cls.contains("w-editor");
 }
 
 /**
@@ -100,52 +100,52 @@ function isAuthoringSurface() {
  * element is in view. It does not finish off-screen.
  */
 function startObserver(root) {
-  // This module observes groups too, alongside individually tagged
-  // elements. A group's children reveal WITHOUT an attribute of their own.
-  // That is what lets a Button component instance animate at all, since
-  // instance roots cannot take custom attributes. So there is nothing on
-  // the child for this module to flip. The CSS reads the state off the
-  // group instead, so the group is what this module watches.
-  const targets = qsa(
-    root,
-    "[data-anim]:not([data-anim='off']):not([data-anim-on='load'])," +
-      "[data-anim-group]:not([data-anim-on='load'])",
-  );
+	// This module observes groups too, alongside individually tagged
+	// elements. A group's children reveal WITHOUT an attribute of their own.
+	// That is what lets a Button component instance animate at all, since
+	// instance roots cannot take custom attributes. So there is nothing on
+	// the child for this module to flip. The CSS reads the state off the
+	// group instead, so the group is what this module watches.
+	const targets = qsa(
+		root,
+		"[data-anim]:not([data-anim='off']):not([data-anim-on='load'])," +
+			"[data-anim-group]:not([data-anim-on='load'])",
+	);
 
-  // This releases anything inside an excluded subtree right away. It never
-  // observes such an element, and it deliberately does not track the
-  // element for the guard. These elements can legitimately sit below full
-  // opacity for reasons that have nothing to do with this module, such as
-  // an inactive Embla slide or a decorative overlay. Otherwise, the guard
-  // would read that as "revealed but still invisible" and disable every
-  // reveal on the page.
-  targets.filter((el) => el.closest(EXCLUDE)).forEach((el) => release(el, { track: false }));
-  const observable = targets.filter((el) => !el.closest(EXCLUDE));
+	// This releases anything inside an excluded subtree right away. It never
+	// observes such an element, and it deliberately does not track the
+	// element for the guard. These elements can legitimately sit below full
+	// opacity for reasons that have nothing to do with this module, such as
+	// an inactive Embla slide or a decorative overlay. Otherwise, the guard
+	// would read that as "revealed but still invisible" and disable every
+	// reveal on the page.
+	targets.filter((el) => el.closest(EXCLUDE)).forEach((el) => release(el, { track: false }));
+	const observable = targets.filter((el) => !el.closest(EXCLUDE));
 
-  if (typeof IntersectionObserver !== "function") {
-    observable.forEach((el) => release(el));
-    return;
-  }
+	if (typeof IntersectionObserver !== "function") {
+		observable.forEach((el) => release(el));
+		return;
+	}
 
-  const observer = new IntersectionObserver(
-    (entries) => {
-      entries.forEach((entry) => {
-        // An element can end up ABOVE the viewport without ever intersecting.
-        // An anchor jump, a restored scroll position, or a scrollIntoView call
-        // all move in a single frame, and the observer only samples at frame
-        // boundaries. This module reveals these too. There is nothing left
-        // to animate, since they are already past, but they must not stay
-        // hidden.
-        const passedAbove = entry.boundingClientRect.bottom < 0;
-        if (!entry.isIntersecting && !passedAbove) return;
-        release(entry.target);
-        observer.unobserve(entry.target);
-      });
-    },
-    { rootMargin: "0px 0px -10% 0px", threshold: 0 },
-  );
+	const observer = new IntersectionObserver(
+		(entries) => {
+			entries.forEach((entry) => {
+				// An element can end up ABOVE the viewport without ever intersecting.
+				// An anchor jump, a restored scroll position, or a scrollIntoView call
+				// all move in a single frame, and the observer only samples at frame
+				// boundaries. This module reveals these too. There is nothing left
+				// to animate, since they are already past, but they must not stay
+				// hidden.
+				const passedAbove = entry.boundingClientRect.bottom < 0;
+				if (!entry.isIntersecting && !passedAbove) return;
+				release(entry.target);
+				observer.unobserve(entry.target);
+			});
+		},
+		{ rootMargin: "0px 0px -10% 0px", threshold: 0 },
+	);
 
-  observable.forEach((el) => observer.observe(el));
+	observable.forEach((el) => observer.observe(el));
 }
 
 /** The time this module told each element to reveal. This lets the guard tell late elements from stuck elements. */
@@ -177,19 +177,19 @@ const SETTLED_MS = 1500;
  * simply waits its turn, and that shows the system works as intended.
  */
 function guard() {
-  const now = performance.now();
-  const stuck = qsa(document, "[data-anim-state='in']").some((el) => {
-    const since = revealedAt.get(el);
-    if (since === undefined || now - since < SETTLED_MS) return false;
-    // A GROUP is never animated itself. Only its children are. If this
-    // function checked the group's own opacity, it would always read 1,
-    // and it would miss a whole section stuck hidden.
-    const subjects = el.hasAttribute("data-anim-group")
-      ? Array.from(el.children).filter((c) => !c.hasAttribute("data-anim-group"))
-      : [el];
-    return subjects.some((s) => Number(getComputedStyle(s).opacity) < 0.9);
-  });
-  if (stuck) document.documentElement.setAttribute("data-anim-panic", "");
+	const now = performance.now();
+	const stuck = qsa(document, "[data-anim-state='in']").some((el) => {
+		const since = revealedAt.get(el);
+		if (since === undefined || now - since < SETTLED_MS) return false;
+		// A GROUP is never animated itself. Only its children are. If this
+		// function checked the group's own opacity, it would always read 1,
+		// and it would miss a whole section stuck hidden.
+		const subjects = el.hasAttribute("data-anim-group")
+			? Array.from(el.children).filter((c) => !c.hasAttribute("data-anim-group"))
+			: [el];
+		return subjects.some((s) => Number(getComputedStyle(s).opacity) < 0.9);
+	});
+	if (stuck) document.documentElement.setAttribute("data-anim-panic", "");
 }
 
 /**
@@ -198,32 +198,32 @@ function guard() {
  * where this module releases excluded subtrees.
  */
 function release(el, { track = true } = {}) {
-  if (track) revealedAt.set(el, performance.now());
-  el.setAttribute("data-anim-state", "in");
+	if (track) revealedAt.set(el, performance.now());
+	el.setAttribute("data-anim-state", "in");
 }
 
 export function initAnim(root = document) {
-  if (isAuthoringSurface()) return;
+	if (isAuthoringSurface()) return;
 
-  // ORDER MATTERS. This is the whole fail-open guarantee.
-  //
-  // Arm the guard FIRST, so it is scheduled no matter what happens next.
-  // `data-anim-ready`, the flag that lets the CSS hide anything, goes on
-  // only once the observer is active. Before this fix, the flag went on
-  // first. If `startObserver` then threw an error, the CSS already held
-  // every element hidden, the guard was not yet scheduled, and bundle.js's
-  // try/catch swallowed the error. Content stayed hidden forever, at
-  // exactly the point this design exists to protect. Now, if the observer
-  // fails, the flag comes back off, and the page is simply un-animated.
-  setTimeout(guard, GRACE_MS);
+	// ORDER MATTERS. This is the whole fail-open guarantee.
+	//
+	// Arm the guard FIRST, so it is scheduled no matter what happens next.
+	// `data-anim-ready`, the flag that lets the CSS hide anything, goes on
+	// only once the observer is active. Before this fix, the flag went on
+	// first. If `startObserver` then threw an error, the CSS already held
+	// every element hidden, the guard was not yet scheduled, and bundle.js's
+	// try/catch swallowed the error. Content stayed hidden forever, at
+	// exactly the point this design exists to protect. Now, if the observer
+	// fails, the flag comes back off, and the page is simply un-animated.
+	setTimeout(guard, GRACE_MS);
 
-  try {
-    document.documentElement.setAttribute("data-anim-ready", "");
-    startObserver(root);
-  } catch (error) {
-    document.documentElement.removeAttribute("data-anim-ready");
-    throw error;
-  }
+	try {
+		document.documentElement.setAttribute("data-anim-ready", "");
+		startObserver(root);
+	} catch (error) {
+		document.documentElement.removeAttribute("data-anim-ready");
+		throw error;
+	}
 }
 
 export default initAnim;
