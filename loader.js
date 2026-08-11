@@ -107,6 +107,7 @@
     calc: { label: "Tax calculator", default: true },
     "insights-toc": { label: "Insights TOC", default: true },
     "insurer-sort": { label: "Insurer sorting", default: true },
+    dialogs: { label: "Modal dialogs", default: true },
   };
 
   const el = (window.el = window.el || {});
