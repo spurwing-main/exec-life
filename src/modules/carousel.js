@@ -98,13 +98,41 @@ function dampScrollBody(embla) {
   }
 }
 
+// Where a snap puts the slide, for a viewport that bleeds to the screen edge.
+//
+// `data-carousel-bleed` makes the viewport 100vw, so its start is the screen
+// edge. Embla's 'start' alignment then puts each slide at 0vw. The bleed CSS
+// insets only the FIRST and the LAST slide, with a margin, so those two ends
+// looked correct while every snap between them sat hard against the screen
+// edge.
+//
+// Embla's align option also takes a function, which gives the offset in px for
+// each snap. Return the same inset, and every slide lines up with the container.
+// The first slide keeps its margin: its snap becomes inset minus inset, which
+// is 0, so it does not move.
+//
+// Read the inset from that margin, and do not repeat the vw calculation here.
+// The CSS is the one source for it, and this stays correct at each width:
+// outside the bleed breakpoint the margin is 0, which gives plain 'start'.
+// A function also re-reads on reInit, which is what a resize triggers.
+function contentInsetAlign(viewport) {
+  return () => {
+    const firstSlide = viewport.firstElementChild?.firstElementChild;
+    if (!firstSlide) return 0;
+    const inset = parseFloat(getComputedStyle(firstSlide).marginLeft);
+    return Number.isFinite(inset) ? inset : 0;
+  };
+}
+
 function setupCarousel(root) {
   const viewport = qs(root, "[data-carousel-viewport]");
   if (!viewport) return;
 
+  // Only replace the default. An author who asked for center or end gets it.
+  const alignAttr = root.getAttribute("data-carousel-align") || "start";
   const options = {
     loop: root.getAttribute("data-carousel-loop") === "true",
-    align: root.getAttribute("data-carousel-align") || "start",
+    align: alignAttr === "start" ? contentInsetAlign(viewport) : alignAttr,
     containScroll: "trimSnaps",
     duration: SCROLL_DURATION,
     skipSnaps: SKIP_SNAPS,
