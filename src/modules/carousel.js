@@ -45,6 +45,44 @@ import { qs, qsa, reduceMotion } from "../utils/dom.js";
 // every visual visible and editable there, with no flash of unstyled content
 // (FOUC) at boot.
 
+// One slide feel for the whole site. These are constants on purpose, NOT
+// per-instance attributes: every slider must move the same way.
+//
+// Embla gives duration 25 and an internal friction of 0.68. Together they read
+// as floaty: the slide drifts on after the arrow press, then stops very late.
+// EXE-87 calls this bounciness. Two values control it, and each does a
+// different job:
+//   duration  A public option. It sets how long the tween runs. A lower
+//             number stops sooner.
+//   friction  NOT a public option. Embla keeps it as a closure constant, and
+//             resets to it before every scroll. Its physics multiplies the
+//             velocity by this number on each frame. Therefore a LOWER number
+//             damps the movement sooner and reduces the overshoot.
+const SCROLL_DURATION = 18;
+const SCROLL_FRICTION = 0.6;
+
+// Apply the friction above. internalEngine() is Embla's own way in for physics
+// that it does not expose as an option.
+//
+// This patches useBaseFriction, and does not only call useFriction once,
+// because scrollTo resets the friction to the base value before every scroll.
+// One call to useFriction is lost at the next arrow press.
+function dampScrollBody(embla) {
+  try {
+    const scrollBody = embla.internalEngine()?.scrollBody;
+    if (!scrollBody || scrollBody._elDamped) return;
+    scrollBody._elDamped = true;
+    const useBaseFriction = scrollBody.useBaseFriction.bind(scrollBody);
+    scrollBody.useBaseFriction = () => {
+      useBaseFriction();
+      return scrollBody.useFriction(SCROLL_FRICTION);
+    };
+    scrollBody.useFriction(SCROLL_FRICTION);
+  } catch {
+    // Internals moved. Keep the public duration change and carry on.
+  }
+}
+
 function setupCarousel(root) {
   const viewport = qs(root, "[data-carousel-viewport]");
   if (!viewport) return;
@@ -53,6 +91,7 @@ function setupCarousel(root) {
     loop: root.getAttribute("data-carousel-loop") === "true",
     align: root.getAttribute("data-carousel-align") || "start",
     containScroll: "trimSnaps",
+    duration: SCROLL_DURATION,
   };
   // Respect reduced motion. Jump instantly, and do not animate.
   if (reduceMotion()) options.duration = 0;
@@ -78,6 +117,19 @@ function setupCarousel(root) {
 
   const embla = EmblaCarousel(viewport, options, plugins);
   root._carousel = embla; // expose so this can re-init after CMS loads, and so a developer can debug it
+
+  // Does Embla drive this slider at the current breakpoint? It is false after
+  // `data-carousel-stack` returns the slides to normal CSS flow. Read the
+  // engine's resolved options, because each other Embla query answers as if
+  // the slider is still active. If the internals are absent, assume active.
+  // That keeps the earlier behaviour.
+  const isActive = () => {
+    try {
+      return embla.internalEngine()?.options?.active !== false;
+    } catch {
+      return true;
+    }
+  };
 
   // Arrows respond to click and keyboard input, so custom role="button"
   // elements stay accessible.
@@ -162,7 +214,10 @@ function setupCarousel(root) {
   let dots = [];
   const buildDots = () => {
     if (!dotsWrap) return;
-    const snaps = embla.scrollSnapList(); // undefined when Embla is inactive
+    // Do not test `!snaps`. scrollSnapList() gives a true array even when Embla
+    // is inactive at this breakpoint. Therefore isActive makes the decision.
+    // See EXE-85.
+    const snaps = isActive() ? embla.scrollSnapList() : null;
     if (!snaps) {
       dotsWrap.replaceChildren();
       dots = [];
@@ -187,7 +242,26 @@ function setupCarousel(root) {
   };
 
   const onSelect = () => {
-    const selected = embla.selectedScrollSnap(); // undefined when Embla is inactive
+    // EXE-85. `data-carousel-stack` makes Embla inactive at a breakpoint. The
+    // slides then become a normal CSS column, and no scroll is possible.
+    //
+    // Embla's read-only queries do NOT show this. selectedScrollSnap() and
+    // canScrollPrev/Next() continue to answer from the engine's index, whatever
+    // `active` holds. Thus the arrows kept an enabled appearance, and stayed
+    // clickable, but did nothing. scrollTo stops internally when inactive.
+    //
+    // So ask the engine for its resolved active state. Then set that state on
+    // the root, which lets the CSS hide the controls, and disable each arrow.
+    root.setAttribute("data-carousel-active", isActive() ? "true" : "false");
+    if (!isActive()) {
+      prevs.forEach((p) => setDisabled(p, true));
+      nexts.forEach((n) => setDisabled(n, true));
+      viewport.setAttribute("data-draggable", "false");
+      (embla.slideNodes() || []).forEach((slide) => slide.removeAttribute("data-active"));
+      if (live) live.textContent = "";
+      return;
+    }
+    const selected = embla.selectedScrollSnap();
     if (selected == null) return;
     dots.forEach((dot, i) => {
       const active = i === selected;
@@ -206,15 +280,19 @@ function setupCarousel(root) {
     if (live) live.textContent = `Slide ${selected + 1} of ${total}`;
   };
 
+  // reInit makes a new engine. Thus apply the friction patch again each time.
   embla.on("init", () => {
+    dampScrollBody(embla);
     buildDots();
     onSelect();
   });
   embla.on("reInit", () => {
+    dampScrollBody(embla);
     buildDots();
     onSelect();
   });
   embla.on("select", onSelect);
+  dampScrollBody(embla);
   buildDots();
   onSelect();
 
