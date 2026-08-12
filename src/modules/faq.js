@@ -66,11 +66,14 @@ let uid = 0;
  * `auto` cannot be a transition end point, which is why the travel needs a
  * measured px value at all.
  *
- * Reading getBoundingClientRect for the start value is what makes a mid-flight
- * reversal smooth: it returns the CURRENT interpolated height, so a second tap
- * turns the panel around from where it is, not from where it started.
+ * `from` arrives already measured, and the caller MUST read it before it changes
+ * [data-open]. The CSS resting state follows that attribute, so a panel that is
+ * about to close reads 0 the moment the attribute flips, and the travel would be
+ * 0 to 0. That measurement is also what makes a mid-flight reversal smooth: it
+ * is the CURRENT interpolated height, so a second tap turns the panel around
+ * from where it is, not from where it started.
  */
-function setPanelHeight(entry, open, animate) {
+function setPanelHeight(entry, open, animate, from) {
   const { panel, inner } = entry;
 
   if (!animate) {
@@ -81,7 +84,6 @@ function setPanelHeight(entry, open, animate) {
     return;
   }
 
-  const from = panel.getBoundingClientRect().height;
   const to = open ? inner.getBoundingClientRect().height : 0;
   panel.style.height = `${from}px`;
   void panel.offsetHeight; // commit the start value, else the browser sees one change
@@ -147,9 +149,13 @@ function setupFaq(root) {
   let isActive = null;
 
   function setOpen(entry, open, animate = true) {
+    const shouldAnimate = animate && !reduceMotion();
+    // Measure BEFORE the attribute changes. See setPanelHeight: the CSS resting
+    // height follows [data-open], so afterwards a closing panel reads 0.
+    const from = shouldAnimate ? entry.panel.getBoundingClientRect().height : 0;
     entry.item.setAttribute("data-open", open ? "true" : "false");
     entry.toggle.setAttribute("aria-expanded", open ? "true" : "false");
-    setPanelHeight(entry, open, animate && !reduceMotion());
+    setPanelHeight(entry, open, shouldAnimate, from);
   }
 
   // Capture the authored state before a static breakpoint forces everything
