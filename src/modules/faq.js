@@ -56,20 +56,26 @@ let uid = 0;
 /**
  * Set a panel's height, and animate it when asked.
  *
- * `auto` cannot be a transition end point, so an open panel travels to the
- * answer's measured height and only then becomes `auto`. It has to reach `auto`,
- * or the answer would clip after a resize, a font swap or a rich-text reflow.
+ * The CSS holds both resting states: height 0 when closed, auto when
+ * [data-open]. This function sets an inline px height only WHILE the panel
+ * moves, and clears it at the end. Two reasons to hand the resting states back:
+ * the answer then stays hidden when no JS runs, which is what the Designer
+ * canvas shows, and an open panel returns to `auto`, so it cannot clip after a
+ * resize, a font swap or a rich-text reflow.
+ *
+ * `auto` cannot be a transition end point, which is why the travel needs a
+ * measured px value at all.
  *
  * Reading getBoundingClientRect for the start value is what makes a mid-flight
  * reversal smooth: it returns the CURRENT interpolated height, so a second tap
  * turns the panel around from where it is, not from where it started.
  */
 function setPanelHeight(entry, open, animate) {
-  const { panel, inner, item } = entry;
+  const { panel, inner } = entry;
 
   if (!animate) {
     panel.style.transition = "none";
-    panel.style.height = open ? "auto" : "0px";
+    panel.style.height = "";
     void panel.offsetHeight; // commit it before the transition returns
     panel.style.transition = "";
     return;
@@ -84,9 +90,10 @@ function setPanelHeight(entry, open, animate) {
   const settle = (event) => {
     if (event && event.propertyName !== "height") return;
     panel.removeEventListener("transitionend", settle);
-    // Re-read the attribute rather than trust `open`: a listener from an earlier
-    // tap can still arrive, and it must not expand an item that is now closed.
-    if (item.getAttribute("data-open") === "true") panel.style.height = "auto";
+    // Clearing the inline value returns the panel to the CSS state, which the
+    // current [data-open] already describes. So a listener left over from an
+    // earlier tap cannot put back a height that no longer applies.
+    panel.style.height = "";
   };
   panel.addEventListener("transitionend", settle);
 }
