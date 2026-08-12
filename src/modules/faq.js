@@ -2,12 +2,22 @@
  * FAQ accordion: open and close behaviour.
  *
  * This module follows the same contract as the other modules. The DOM owns
- * all visual state through CSS. This module only flips a single attribute,
+ * all visual state through CSS. This module flips a single attribute,
  * `data-open`, on each item, plus the `aria-expanded` that matches it, on
- * its toggle. The card fade, the panel expand, and the plus-or-minus icon are
- * all driven by the section's scoped Embed CSS. The panel expand runs
- * grid-template-rows from 0fr to 1fr. Nothing here measures or animates
- * heights.
+ * its toggle. The card fade and the plus-or-minus icon are driven by the
+ * section's scoped Embed CSS.
+ *
+ * The one exception is the panel height, and it is deliberate. EXE-72: the
+ * reveal used to be a CSS grid track, from 0fr to 1fr, with no JS. That makes
+ * the engine size the grid again on each frame, across the container and its
+ * contents, and iOS Safari showed it as a shimmer in the answer text and the
+ * icon. Removing the fade and the icon rotation did not stop it, so the
+ * mechanism was at fault, not those properties. A px height on a normal box is
+ * a far cheaper layout, so this module now measures the answer and sets the two
+ * height values. The CSS still owns the duration and the curve.
+ *
+ * With no JS every panel keeps its natural height, so each answer stays
+ * readable.
  *
  * Markup contract. See the "faq" section:
  *   <div class="faq_list" data-faq>            <!-- data-faq="multi" to allow many open -->
@@ -39,9 +49,47 @@
  */
 
 import { BREAKPOINT_QUERIES } from "../utils/breakpoints.js";
-import { qsa, qs, closestWithin } from "../utils/dom.js";
+import { qsa, qs, closestWithin, reduceMotion } from "../utils/dom.js";
 
 let uid = 0;
+
+/**
+ * Set a panel's height, and animate it when asked.
+ *
+ * `auto` cannot be a transition end point, so an open panel travels to the
+ * answer's measured height and only then becomes `auto`. It has to reach `auto`,
+ * or the answer would clip after a resize, a font swap or a rich-text reflow.
+ *
+ * Reading getBoundingClientRect for the start value is what makes a mid-flight
+ * reversal smooth: it returns the CURRENT interpolated height, so a second tap
+ * turns the panel around from where it is, not from where it started.
+ */
+function setPanelHeight(entry, open, animate) {
+  const { panel, inner, item } = entry;
+
+  if (!animate) {
+    panel.style.transition = "none";
+    panel.style.height = open ? "auto" : "0px";
+    void panel.offsetHeight; // commit it before the transition returns
+    panel.style.transition = "";
+    return;
+  }
+
+  const from = panel.getBoundingClientRect().height;
+  const to = open ? inner.getBoundingClientRect().height : 0;
+  panel.style.height = `${from}px`;
+  void panel.offsetHeight; // commit the start value, else the browser sees one change
+  panel.style.height = `${to}px`;
+
+  const settle = (event) => {
+    if (event && event.propertyName !== "height") return;
+    panel.removeEventListener("transitionend", settle);
+    // Re-read the attribute rather than trust `open`: a listener from an earlier
+    // tap can still arrive, and it must not expand an item that is now closed.
+    if (item.getAttribute("data-open") === "true") panel.style.height = "auto";
+  };
+  panel.addEventListener("transitionend", settle);
+}
 
 function parseBreakpoints(value) {
   if (!value) return [];
@@ -78,7 +126,11 @@ function setupFaq(root) {
       if (!panel.hasAttribute("role")) panel.setAttribute("role", "region");
       panel.setAttribute("aria-labelledby", toggleId);
 
-      return { item, toggle, panel };
+      // The answer keeps its natural height, and the panel clips it, so measure
+      // the inner and never the panel.
+      const inner = panel.firstElementChild || panel;
+
+      return { item, toggle, panel, inner };
     })
     .filter(Boolean);
 
@@ -87,9 +139,10 @@ function setupFaq(root) {
   const toggles = entries.map((e) => e.toggle);
   let isActive = null;
 
-  function setOpen(entry, open) {
+  function setOpen(entry, open, animate = true) {
     entry.item.setAttribute("data-open", open ? "true" : "false");
     entry.toggle.setAttribute("aria-expanded", open ? "true" : "false");
+    setPanelHeight(entry, open, animate && !reduceMotion());
   }
 
   // Capture the authored state before a static breakpoint forces everything
@@ -118,14 +171,17 @@ function setupFaq(root) {
     isActive = shouldBeActive;
     root.setAttribute("data-faq-active", shouldBeActive ? "true" : "false");
 
+    // Neither the first run nor a breakpoint change is a person opening an item,
+    // so both set the height at once, with no animation.
     entries.forEach((entry, i) => {
       if (shouldBeActive) {
-        setOpen(entry, initialOpen[i]);
+        setOpen(entry, initialOpen[i], false);
       } else {
         // Inactive means ordinary static content. It is fully open, with no
         // expandable-state announcement and no click or keyboard behaviour.
         entry.item.setAttribute("data-open", "true");
         entry.toggle.removeAttribute("aria-expanded");
+        setPanelHeight(entry, true, false);
       }
     });
   }
