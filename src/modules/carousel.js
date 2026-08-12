@@ -61,6 +61,21 @@ import { qs, qsa, reduceMotion } from "../utils/dom.js";
 const SCROLL_DURATION = 18;
 const SCROLL_FRICTION = 0.6;
 
+// A hard drag can pass more than one slide. Without this, Embla clamps the
+// release to exactly one slide, whatever force the person used, which fights
+// the gesture.
+//
+// The blast radius is small, and this was checked against Embla's source.
+// skipSnaps is read at one place only: allowedForce(), which runs on pointer
+// release. Therefore it cannot change an arrow, a dot, the autoplay, the
+// keyboard, or an inactive breakpoint, because each of those goes through
+// scrollTo instead.
+//
+// It also does not touch SCROLL_FRICTION above. Embla sets its own duration and
+// friction for the release, and it does not call useBaseFriction, which is the
+// method the patch below replaces. The two are independent.
+const SKIP_SNAPS = true;
+
 // Apply the friction above. internalEngine() is Embla's own way in for physics
 // that it does not expose as an option.
 //
@@ -92,6 +107,7 @@ function setupCarousel(root) {
     align: root.getAttribute("data-carousel-align") || "start",
     containScroll: "trimSnaps",
     duration: SCROLL_DURATION,
+    skipSnaps: SKIP_SNAPS,
   };
   // Respect reduced motion. Jump instantly, and do not animate.
   if (reduceMotion()) options.duration = 0;
