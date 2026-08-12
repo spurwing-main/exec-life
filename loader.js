@@ -8,18 +8,15 @@
 //
 // Run `npm run tag` to show the exact tag for the current commit.
 //
-// Why use a SHA and not @main:
-//   A URL that is pinned to a commit is immutable on jsDelivr. jsDelivr
-//   caches the URL forever. You never need to purge the cache, and the
-//   content never goes stale. To release a new version, change the SHA in
-//   the Webflow tag and publish the page. To roll back to an earlier
-//   version, change the SHA back. The pin is in Webflow. It is not in this
-//   file. Webflow serves fresh HTML on each request, but jsDelivr caches
-//   this file.
+// Why a SHA and not @main:
+//   A commit-pinned URL is immutable on jsDelivr, which caches it forever.
+//   You never purge the cache and the content never goes stale. Release by
+//   changing the SHA in the Webflow tag and publishing. Roll back by changing
+//   it back. The pin lives in Webflow, not in this file: Webflow serves fresh
+//   HTML on each request, jsDelivr caches this file.
 //
-// The loader reads its own commit from the <script src> attribute. It loads
-// the matching `dist/bundle.js` file from the same commit. This keeps the
-// loader and the bundle in sync at all times.
+// The loader reads its own commit from the <script src> attribute and loads
+// `dist/bundle.js` from that same commit, so the two never drift apart.
 //
 // Resolution order. The loader checks these in order and uses the first match:
 //   1. URL params      ?env=local | ?env=live | ?commit=<sha> | ?local=<url>
@@ -62,17 +59,13 @@
     unhideTimeout: 4000, // Time, in milliseconds, after which the loader shows content even if the bundle has not loaded.
   };
 
-  // One persisted key remains. There used to be four keys. An audit found
-  // that three of them were dead:
-  //   el_dev_enabled : the code wrote this key, but devMode and showPanel
-  //                    never read it. Its "Keep dev mode on this browser"
-  //                    checkbox had no effect.
-  //   el_local       : the code read this key at localBase, but nothing ever
-  //                    wrote it.
-  //   el_commit      : the code read this key at commit, but nothing ever
-  //                    wrote it.
-  // The `?local=` and `?commit=` parameters remain as per-pageview URL
-  // overrides. That is the only way the code ever used them.
+  // Two keys remain of four. An audit found three dead:
+  //   el_dev_enabled : written, but devMode and showPanel never read it. Its
+  //                    "Keep dev mode on this browser" checkbox did nothing.
+  //   el_local       : read at localBase, never written.
+  //   el_commit      : read at commit, never written.
+  // `?local=` and `?commit=` remain as per-pageview URL overrides, which is
+  // the only way the code ever used them.
   const KEYS = {
     env: "el_env",
     flags: "el_flags",
@@ -80,23 +73,21 @@
 
   // -- feature flags ---------------------------------------------------------
   // One registry holds every switchable feature. It lives in the loader, not
-  // in the bundle, for two reasons. The loader runs first, so it can set the
-  // CSS gate before the bundle runs, or before a failed bundle has any
-  // effect. The dev panel can also toggle a CSS-only feature even when no JS
-  // module is involved.
+  // the bundle, for two reasons: the loader runs first, so it can set the CSS
+  // gate before the bundle runs or before a failed bundle has any effect; and
+  // the dev panel can toggle a CSS-only feature with no JS module involved.
   //
   // Each feature has two gates:
-  //   html[data-el-on~="<name>"]   The CSS gate. Each embed must gate every
-  //                                rule that applies styles for this feature,
-  //                                not only the rule that defines the styles.
-  //                                This is what makes a feature switchable
-  //                                without a comment mark on the CSS. See the
-  //                                README for more detail.
-  //   el.flags.enabled("<name>")   The JS gate. bundle.js skips a module when
-  //                                its feature flag is disabled.
+  //   html[data-el-on~="<name>"]   CSS gate. Each embed must gate every rule
+  //                                that APPLIES styles for the feature, not
+  //                                only the rule that defines them. That is
+  //                                what makes a feature switchable without
+  //                                commenting out CSS. See the README.
+  //   el.flags.enabled("<name>")   JS gate. bundle.js skips a module when its
+  //                                flag is disabled.
   //
-  // A feature with `default: false` ships dormant. The code is live and open
-  // for review, but it does nothing until someone turns the feature on.
+  // A feature with `default: false` ships dormant: live and open for review,
+  // doing nothing until someone turns it on.
   const FEATURES = {
     nav: { label: "Nav", default: true },
     tabs: { label: "Tabs", default: true },
@@ -114,12 +105,12 @@
   el.functions = el.functions || {};
 
   // -- storage helpers -------------------------------------------------------
-  // The code uses sessionStorage, not localStorage. The environment override
-  // must survive navigation between pages, and a query parameter does not
-  // survive that navigation. But the override must not outlive the browser
-  // tab. A sticky localStorage flag set weeks ago would silently change which
-  // bundle a page in staging runs, and that fault is almost impossible to
-  // find. Session scope keeps the useful behavior and removes that risk.
+  // sessionStorage, not localStorage. The environment override must survive
+  // navigation between pages, which a query parameter does not, but it must
+  // not outlive the tab. A sticky localStorage flag set weeks ago would
+  // silently change which bundle a staging page runs, and that fault is
+  // almost impossible to find. Session scope keeps the behaviour, drops the
+  // risk.
   const store = {
     get(k) {
       try {
@@ -153,12 +144,11 @@
     return v && v.trim() ? v.trim() : null;
   };
 
-  // This function returns a presence-style flag. `param()` deliberately
-  // returns null for an empty value. That is correct for ?env=, ?commit=,
-  // and ?local=, which each need a real value. But that same behavior made a
-  // bare `?dev` do nothing. An empty value read as null. Dev mode never
-  // switched on. This function treats a parameter written with no value as
-  // ON, which is what most people type.
+  // Presence-style flag. `param()` returns null for an empty value, which is
+  // correct for ?env=, ?commit= and ?local=, since each needs a real value.
+  // That same behaviour made a bare `?dev` do nothing: empty read as null and
+  // dev mode never switched on. This treats a valueless parameter as ON,
+  // which is what most people type.
   //   ?dev, ?dev=1, ?dev=true, ?dev=on, ?dev=yes  gives true
   //   ?dev=0, ?dev=false, ?dev=off, ?dev=no       gives false, and forces OFF
   //   an absent or an unrecognized value          gives null, meaning no opinion
@@ -174,20 +164,18 @@
   // -- resolve config --------------------------------------------------------
   const isDevHost = /\.webflow\.io$/.test(location.hostname);
 
-  // A null value means no opinion, so the code falls back to the host check.
-  // An explicit ?dev=0 now wins over isDevHost. This lets you force a page in
-  // staging to behave like production. An earlier version of this code could
-  // not do this, because `isDevHost ||` short-circuited the check.
+  // Null means no opinion, so it falls back to the host check. An explicit
+  // ?dev=0 wins over isDevHost, which lets you force a staging page to behave
+  // like production. An earlier version could not: `isDevHost ||`
+  // short-circuited the check.
   const devFlag = flag("dev") ?? flag("mode");
   const devMode = devFlag === false ? false : devFlag === true || isDevHost;
 
   const persisted = (k) => (devMode ? store.get(k) : null);
 
-  // Read the owner, the project, and the commit from this loader's own tag
-  // URL, for example:
+  // Read owner, project and commit from this loader's own tag URL:
   //   https://cdn.jsdelivr.net/gh/<owner>/<project>@<commit>/loader.js
-  // The <commit> value in the Webflow tag is the pin. Change it there to
-  // release a new version.
+  // <commit> in the Webflow tag is the pin. Change it there to release.
   const self = (() => {
     try {
       const src = document.currentScript && document.currentScript.src;
@@ -209,20 +197,16 @@
   let env = envOverride;
   if (env !== "local" && env !== "live") env = devMode ? "auto" : "live";
 
-  // A persisted override must never be silently in effect. If session state
-  // controls which bundle loads, the panel shows so that you can see the
-  // override and reset it.
+  // A persisted override must never be silently in effect. When session state
+  // controls which bundle loads, the panel shows, so you can see and reset it.
   const hasOverride = !!(envOverride || param("commit") || param("local"));
 
   // -- resolve flags ---------------------------------------------------------
-  // The precedence for each feature is, in order: the ?on= or ?off= URL
-  // parameter, then the persisted value, then the registry default.
+  // Precedence per feature: ?on= or ?off= URL parameter, then the persisted
+  // value, then the registry default.
   //   ?off=anim,faq      turns the named features off for this pageview
   //   ?on=anim           turns the named feature on for this pageview
-  // A persisted override uses sessionStorage for the same reason as `env`. A
-  // flag set weeks ago in localStorage would silently change what a page
-  // does, and that fault is close to impossible to find. Session scope keeps
-  // the useful behavior.
+  // Persisted overrides use sessionStorage for the same reason as `env`.
   const flagOverrides = (() => {
     const out = {};
     const parse = (raw) =>

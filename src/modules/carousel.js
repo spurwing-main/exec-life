@@ -1,12 +1,11 @@
 /**
  * Reusable Embla carousel: one module for every slider on the site.
  *
- * Embla is class-agnostic. It only needs a viewport node whose first child
- * is the track. All class names stay ours, for example testi_* and
- * services_*. Embla only sets transforms on the track at runtime. This
- * module exposes state as attributes, so CSS owns the visuals: active
- * slide, selected dot, disabled arrow. This module follows the same "JS is
- * thin, CSS-backed" contract as the tabs.
+ * Embla is class-agnostic and needs only a viewport node whose first child is
+ * the track, so all class names stay ours, for example testi_* and services_*.
+ * At runtime Embla sets transforms on the track and nothing else. State is
+ * exposed as attributes so CSS owns the visuals: active slide, selected dot,
+ * disabled arrow. Same "JS is thin, CSS-backed" contract as the tabs.
  *
  * Markup contract. Put these attributes on the carousel root:
  *   [data-carousel]                     root
@@ -21,35 +20,30 @@
  *     data-carousel-autoplay="6000"     ms; enables autoplay + off-screen pause
  *     data-carousel-label="…"           accessible name for the carousel region
  *
- * Accessibility and UX. This module applies them here, not in the Embeds,
- * so every slider gets them:
- *   - the ARIA Authoring Practices Guide (APG) carousel semantics:
- *     role=region + aria-roledescription=carousel on the root; role=group +
+ * Accessibility and UX live here, not in the Embeds, so every slider gets them:
+ *   - ARIA Authoring Practices Guide (APG) carousel semantics: role=region +
+ *     aria-roledescription=carousel on the root; role=group +
  *     aria-roledescription=slide + "N of M" on each slide.
- *   - Prev and Next get button semantics, labels, and aria-disabled at the
- *     ends.
- *   - This module marks the active dot with aria-current.
- *   - A visually-hidden aria-live region announces the current slide, but
- *     only when the carousel does not autoplay. A live region plus
- *     auto-rotation is just noise for assistive technology (AT) users.
- *   - grab and grabbing cursor, shown only while actually draggable; no
- *     text selection or image ghost-drag during a swipe; and
- *     :focus-visible rings. This module injects all of these once.
- *   - prefers-reduced-motion: this module scrolls instantly and disables
- *     autoplay.
+ *   - Prev and Next get button semantics, labels and aria-disabled at the ends.
+ *   - The active dot is marked with aria-current.
+ *   - A visually-hidden aria-live region announces the current slide, but only
+ *     when the carousel does not autoplay. A live region plus auto-rotation is
+ *     noise for assistive technology (AT) users.
+ *   - grab and grabbing cursor while actually draggable; no text selection or
+ *     image ghost-drag during a swipe; :focus-visible rings. Injected once.
+ *   - prefers-reduced-motion: scroll instantly, autoplay disabled.
  */
 
 import EmblaCarousel from "embla-carousel";
 import Autoplay from "embla-carousel-autoplay";
 import { qs, qsa, reduceMotion } from "../utils/dom.js";
 
-// The presentation for the carousels lives in the site's global
-// interactions Embed in Webflow, NOT here. This covers the grab and
-// disabled cursor, no-select during a drag, and focus rings. This module
-// only flips the attributes those rules key off: data-draggable,
-// [disabled], data-active. The CSS stays in Webflow, so every visual stays
-// visible and editable there, with no flash of unstyled content (FOUC) at
-// boot time.
+// Carousel presentation lives in the site's global interactions Embed in
+// Webflow, NOT here: grab and disabled cursor, no-select during a drag, focus
+// rings. This module only flips the attributes those rules key off:
+// data-draggable, [disabled], data-active. Keeping the CSS in Webflow leaves
+// every visual visible and editable there, with no flash of unstyled content
+// (FOUC) at boot.
 
 function setupCarousel(root) {
   const viewport = qs(root, "[data-carousel-viewport]");
@@ -63,9 +57,8 @@ function setupCarousel(root) {
   // Respect reduced motion. Jump instantly, and do not animate.
   if (reduceMotion()) options.duration = 0;
 
-  // Opt-in: disable Embla at a breakpoint so the slides fall back to
-  // normal flow. For example, they might fall back to a stacked column on
-  // mobile. CSS owns the stacked layout.
+  // Opt-in: disable Embla at a breakpoint so slides fall back to normal flow,
+  // for example a stacked column on mobile. CSS owns the stacked layout.
   const stackAt = root.getAttribute("data-carousel-stack");
   if (stackAt) options.breakpoints = { [stackAt]: { active: false } };
 
@@ -99,17 +92,15 @@ function setupCarousel(root) {
     });
   };
   // Arrows come from the shared "Slider Arrow" component and carry
-  // [data-carousel-arrow]. A carousel can have MORE THAN ONE control
-  // surface. For example, Services shows header arrows on desktop and a
-  // separate footer row of arrows on mobile, so this wires EVERY arrow, not
-  // just the first pair.
+  // [data-carousel-arrow]. A carousel can have MORE THAN ONE control surface:
+  // Services shows header arrows on desktop and a separate footer row on
+  // mobile, so EVERY arrow is wired, not just the first pair.
   //
-  // This module resolves direction per CONTROL GROUP, the arrows' shared
-  // parent. The first arrow in each group is "previous". The rest are
-  // "next". This works whether or not the instance carries the "previous"
-  // variant. An explicit [data-carousel-prev] or [data-carousel-next]
-  // marker still wins. Prev arrows get `is-prev`, which the CSS uses to
-  // rotate the icon 180deg.
+  // Direction resolves per CONTROL GROUP, the arrows' shared parent: the first
+  // arrow in each group is "previous", the rest are "next". This works whether
+  // or not the instance carries the "previous" variant, and an explicit
+  // [data-carousel-prev] or [data-carousel-next] marker still wins. Prev
+  // arrows get `is-prev`, which the CSS uses to rotate the icon 180deg.
   const arrows = qsa(root, "[data-carousel-arrow]");
   const groups = new Map();
   arrows.forEach((a) => {
@@ -155,8 +146,8 @@ function setupCarousel(root) {
     if (!slide.getAttribute("aria-label")) slide.setAttribute("aria-label", `${i + 1} of ${total}`);
   });
 
-  // Visually-hidden announcer. This turns off while the carousel autoplays,
-  // to avoid constant chatter.
+  // Visually-hidden announcer, off while the carousel autoplays to avoid
+  // constant chatter.
   let live = null;
   if (!autoplayOn) {
     live = document.createElement("span");
@@ -227,10 +218,9 @@ function setupCarousel(root) {
   buildDots();
   onSelect();
 
-  // Pause autoplay while off-screen. This mirrors the tabs' visibility
-  // gating. `plugins()` is undefined when Embla is inactive at the current
-  // breakpoint. For example, a slider might use `data-carousel-stack` to go
-  // inactive on mobile. Guard the access for this case.
+  // Pause autoplay while off-screen, mirroring the tabs' visibility gating.
+  // `plugins()` is undefined when Embla is inactive at the current breakpoint,
+  // for example a slider using `data-carousel-stack` on mobile, so guard it.
   const autoplay = embla.plugins()?.autoplay;
   if (autoplay && "IntersectionObserver" in window) {
     new IntersectionObserver(

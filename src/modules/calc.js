@@ -1,24 +1,21 @@
 /**
  * Tax saving calculator: the arithmetic and nothing else.
  *
- * This module compares the true cost of two policies. A personal life
- * policy is funded from a dividend, so this module grosses the cost up for
- * BOTH dividend tax and corporation tax. A company-paid Relevant Life
- * policy is an allowable expense, so it costs the premium less corporation
- * tax relief.
+ * Compares the true cost of two policies. A personal life policy is funded
+ * from a dividend, so its cost grosses up for BOTH dividend tax and
+ * corporation tax. A company-paid Relevant Life policy is an allowable
+ * expense, so it costs the premium less corporation tax relief.
  *
  *   personalMonthly = premium / (1 - bandRate) / (1 - corpRate)
  *   relevantMonthly = premium * (1 - corpRate)
  *   monthlySaving   = personalMonthly - relevantMonthly
  *
- * SIGNED OFF by the client on 2026-07-15. The confirmation is Figma comment
- * 1843887851: "ive checked these and your updated version is correct so
- * good to go". The rates and the three worked examples live in
- * `TAX-CALCULATOR.md`. `calc.test.js` asserts all nine figures. Do not
- * adjust the maths or the rounding. Read both files again first.
+ * SIGNED OFF by the client on 2026-07-15, Figma comment 1843887851. The rates
+ * and three worked examples live in `TAX-CALCULATOR.md`, and `calc.test.js`
+ * asserts all nine figures. Do not adjust the maths or the rounding without
+ * reading both files first.
  *
- * Markup contract. This markup is authored in the Designer. See
- * TAX-CALCULATOR.md §3.1:
+ * Markup contract, authored in the Designer. See TAX-CALCULATOR.md §3.1:
  *   <section data-calc
  *            data-calc-corp="0.25"
  *            data-calc-rate-basic="0.1075"
@@ -33,10 +30,9 @@
  *     <div data-calc-out="monthly"></div>  <!-- also: annual, term, percent -->
  *
  * The rates are attributes on the COMPONENT DEFINITION, so one edit reaches
- * every instance. The constants below are a fallback, not a second source
- * of truth. If the markup does not set an attribute, the fallback constant
- * still gives the signed-off number, and never a wrong one. If the two
- * ever disagree, the attribute is the bug.
+ * every instance. The constants below are a fallback, not a second source of
+ * truth: a missing attribute still yields the signed-off number, never a
+ * wrong one. If the two ever disagree, the attribute is the bug.
  */
 
 import { qsa, qs } from "../utils/dom.js";
@@ -47,9 +43,9 @@ const DEFAULTS = {
   bands: [0.1075, 0.3575, 0.3935],
 };
 
-/** Band index → the name shown to the user. This module never shows the
- *  percentage. The client asked for names only, because the percentage
- *  misleads directors. */
+/** Band index → the name shown to the user. The percentage is never shown:
+ *  the client asked for names only, because the percentage misleads
+ *  directors. */
 const BAND_NAMES = ["Basic", "Higher", "Additional"];
 
 const GBP = new Intl.NumberFormat("en-GB", {
@@ -78,11 +74,10 @@ const FORMATTERS = {
 /**
  * Read a rate off the root, or fall back to the approved default.
  *
- * This function rejects anything outside the 0–1 range. It does not simply
- * trust the value. For example, someone could type "35.75" by mistake,
- * when they mean 35.75%. Without this check, that value would make
- * `1 - rate` negative and flip the saving. That is the one failure mode
- * that produces a confident wrong number instead of an obvious blank.
+ * Rejects anything outside 0–1 rather than trusting the value. Someone can
+ * type "35.75" meaning 35.75%, which without this check makes `1 - rate`
+ * negative and flips the saving. That is the one failure mode producing a
+ * confident wrong number instead of an obvious blank.
  */
 function readRate(root, attr, fallback) {
   const raw = root.getAttribute(attr);
@@ -131,13 +126,12 @@ export function compute({ premium, years, bandRate, corpRate }) {
 const clamp = (v, lo, hi) => Math.min(Math.max(v, lo), hi);
 
 /**
- * How long the thumb takes to settle into a band after you let go.
+ * How long the thumb takes to settle into a band after release.
  *
- * This function reads the value from `--anim-dur-ui`. It does not
- * hard-code the value, because the track fill uses that same token for its
- * CSS transition. Two separate literals would drift apart, and the fill
- * would finish before the thumb. That is the one glitch people actually
- * notice.
+ * Read from `--anim-dur-ui` rather than hard-coded, because the track fill
+ * uses that same token for its CSS transition. Two separate literals would
+ * drift apart and the fill would finish before the thumb, which is the one
+ * glitch people actually notice.
  */
 function snapDuration(root, fallback = 250) {
   const raw = getComputedStyle(root).getPropertyValue("--anim-dur-ui").trim();
@@ -165,9 +159,8 @@ function setupCalc(root) {
   const maxBand = bands.length - 1;
 
   function render() {
-    // Clamp the band index. Do not simply trust the range's bounds. A
-    // hand-edited embed with the wrong `max` would otherwise index past the
-    // array.
+    // Clamp the band index rather than trusting the range's bounds. A
+    // hand-edited embed with the wrong `max` would index past the array.
     const raw = bandInput ? Number(bandInput.value) : 1;
     const rawBand = Math.round(raw);
     const band = Number.isFinite(rawBand) ? clamp(rawBand, 0, maxBand) : 1;
@@ -188,23 +181,22 @@ function setupCalc(root) {
     outputs.forEach((node) => {
       const key = node.getAttribute("data-calc-out");
       const value = result[key];
-      // Zero renders through the same formatter as a real figure. A field
-      // never changes shape when it fills in. The display goes from £0 to
-      // £22,318, not from £0.00 to £22,318.
+      // Zero renders through the same formatter as a real figure, so a field
+      // never changes shape when it fills in: £0 to £22,318, not £0.00 to
+      // £22,318.
       const format = FORMATTERS[key] || FORMATTERS.default;
-      // Round only here, off the unrounded figure. If this code rounded
-      // `monthly` first and then multiplied, the result would be £39,756
-      // over 25 years, where the signed-off sheet says £39,757. A penny of
-      // rounding turns into £1 of client-visible disagreement.
+      // Round only here, off the unrounded figure. Rounding `monthly` first
+      // and then multiplying gives £39,756 over 25 years, where the
+      // signed-off sheet says £39,757. A penny of rounding becomes £1 of
+      // client-visible disagreement.
       node.textContent = format(value === null || value === undefined ? 0 : value);
     });
 
-    // State for CSS: the band label emphasis and the slider's two-tone fill.
-    // Published as a unitless fraction between 0 and 1, not as a
-    // percentage. The CSS needs a plain <number> to offset the fill by half
-    // the thumb width via calc(), which correctly accounts for its true
-    // rendered inset. A percentage string cannot be multiplied against
-    // px/% inside calc() the same way.
+    // State for CSS: band label emphasis and the slider's two-tone fill.
+    // Published as a unitless 0–1 fraction, not a percentage, because the CSS
+    // needs a plain <number> to offset the fill by half the thumb width via
+    // calc() and account for its true rendered inset. A percentage string
+    // cannot be multiplied against px/% inside calc() the same way.
     root.setAttribute("data-calc-band-value", String(band));
     root.style.setProperty("--calc-band-pos", String(pos / Math.max(maxBand, 1)));
 
@@ -225,13 +217,12 @@ function setupCalc(root) {
   });
 
   /**
-   * Three bands on a `step="1"` range means the thumb teleports between
-   * three fixed points. It does not follow your finger, which reads as
-   * broken even though the value is right. So this makes the range
-   * continuous, then reimposes the discreteness on release. The drag
-   * tracks 1:1, and then the thumb eases into the nearest band. `step` is
-   * set from JS, not authored in the Designer, so the control still
-   * degrades to three fixed stops if this code never runs.
+   * Three bands on a `step="1"` range makes the thumb teleport between three
+   * fixed points instead of following your finger, which reads as broken even
+   * though the value is right. So the range goes continuous, and the
+   * discreteness is reimposed on release: the drag tracks 1:1, then the thumb
+   * eases into the nearest band. `step` is set from JS, not authored in the
+   * Designer, so the control degrades to three fixed stops if this never runs.
    */
   if (bandInput && typeof requestAnimationFrame === "function") {
     let frame = null;
@@ -276,9 +267,8 @@ function setupCalc(root) {
     bandInput.addEventListener("pointercancel", release);
     bandInput.addEventListener("blur", release);
 
-    // `step="any"` leaves the arrow keys able to step by only a fraction of
-    // the range. So keyboard users instead move a whole band at a time,
-    // with the same easing.
+    // `step="any"` leaves the arrow keys stepping by a fraction of the range.
+    // Keyboard users move a whole band at a time instead, with the same easing.
     bandInput.addEventListener("keydown", (event) => {
       const current = clamp(Math.round(Number(bandInput.value)), 0, maxBand);
       let target = null;
@@ -293,12 +283,11 @@ function setupCalc(root) {
     });
   }
 
-  // Webflow refuses to place form controls outside a <form>, so the fields
-  // sit in one. That means if someone presses Enter in a number field, the
-  // form would submit and the page would reload. That would wipe the
-  // result. Nothing here is ever sent anywhere. The section promises, "your
-  // information is secure and will not be stored," and this code is what
-  // makes that promise true, and not just aspirational.
+  // Webflow refuses to place form controls outside a <form>, so the fields sit
+  // in one. Enter in a number field would then submit, reload the page and
+  // wipe the result. Nothing here is ever sent anywhere: the section promises
+  // "your information is secure and will not be stored", and this is what
+  // makes that true rather than aspirational.
   const form = root.querySelector("form");
   if (form) {
     form.setAttribute("novalidate", "");

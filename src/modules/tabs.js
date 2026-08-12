@@ -3,18 +3,16 @@
  *
  * The DOM owns all visual state through CSS. This module only flips
  * attributes: `data-state="active"` on the active tab and panel,
- * `data-active`, a 1-based index, and `data-visible` on the root. The
- * scoped CSS in the component's Embed drives everything else, such as
- * which panel shows, the cross-fade, the progress bar, and the dwell
- * timing.
+ * `data-active` as a 1-based index, and `data-visible` on the root. The scoped
+ * CSS in the component's Embed drives everything else: which panel shows, the
+ * cross-fade, the progress bar, the dwell timing.
  *
- * POSITIONAL CONTRACT. The tabs and panels are Webflow Collection Lists, so
- * an author cannot set per-item attributes in the Designer. There is no
- * `data-tab="single"` or `data-panel="single"` any more. Identity is
- * position. Tab N pairs with panel N, and the module stamps state onto the
- * elements themselves, so neither the CSS nor the JS hardcodes how many
- * items exist. If someone adds a fourth Client Type in the CMS, that needs
- * no code change.
+ * POSITIONAL CONTRACT. Tabs and panels are Webflow Collection Lists, so an
+ * author cannot set per-item attributes in the Designer. There is no
+ * `data-tab="single"` or `data-panel="single"` any more: identity is position.
+ * Tab N pairs with panel N, and state is stamped onto the elements
+ * themselves, so neither CSS nor JS hardcodes how many items exist. A fourth
+ * Client Type added in the CMS needs no code change.
  *
  * Markup contract. See the "who-help" section:
  *   <div data-tabs data-active="1" data-visible="false">
@@ -28,20 +26,20 @@
  *     </div>
  *   </div>
  *
- * Tabs and panels are the DIRECT CHILDREN of the two containers. That is
- * what the Collection List renders: `.w-dyn-items` > `.w-dyn-item`. The
- * containers can sit at any depth under the root. Webflow wraps each list
- * in a `display: contents` div.
+ * Tabs and panels are the DIRECT CHILDREN of the two containers, which is what
+ * the Collection List renders: `.w-dyn-items` > `.w-dyn-item`. The containers
+ * can sit at any depth under the root, and Webflow wraps each list in a
+ * `display: contents` div.
  *
- * This module applies ARIA at runtime for the same reason. An author
- * cannot set roles per item on a Collection List.
+ * ARIA is applied at runtime for the same reason: an author cannot set roles
+ * per item on a Collection List.
  *
  * Timing model:
- *   - Motion allowed: the active tab's `.who-help_tab-bar` runs the
- *     `tabFill` CSS animation. This module advances on its `animationend`.
- *     Off-screen, CSS pauses the animation, gated on `data-visible`, so the
- *     timer only runs while the section is visible.
- *   - Reduced motion: no CSS animation fires, so this module advances with a
+ *   - Motion allowed: the active tab's `.who-help_tab-bar` runs the `tabFill`
+ *     CSS animation and this module advances on its `animationend`. CSS pauses
+ *     that animation off-screen, gated on `data-visible`, so the timer only
+ *     runs while the section is visible.
+ *   - Reduced motion: no CSS animation fires, so advance runs on a
  *     setInterval that only ticks while visible.
  */
 
