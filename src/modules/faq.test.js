@@ -29,7 +29,6 @@ function mockMatchMedia(activeQueries = []) {
   };
 }
 
-/** Build the FAQ markup the Designer produces. First item open by default. */
 function mount({ multi = false, openIndex = 0 } = {}) {
   const attr = multi ? ' data-faq="multi"' : " data-faq";
   document.body.innerHTML = `
@@ -39,7 +38,10 @@ function mount({ multi = false, openIndex = 0 } = {}) {
           (i) => `
         <div class="faq_item" data-faq-item data-open="${i === openIndex ? "true" : "false"}">
           <button class="faq_toggle" data-faq-toggle type="button" aria-expanded="${i === openIndex ? "true" : "false"}">
-            <div class="faq_icon" aria-hidden="true"></div>
+            <div class="faq_icon" aria-hidden="true">
+              <svg class="faq_icon-plus" aria-hidden="true"></svg>
+              <svg class="faq_icon-minus" aria-hidden="true"></svg>
+            </div>
             <p class="faq_question">Question ${i}</p>
           </button>
           <div class="faq_panel" data-faq-panel>
@@ -58,9 +60,60 @@ function mount({ multi = false, openIndex = 0 } = {}) {
 
 const openStates = (items) => items.map((i) => i.getAttribute("data-open"));
 
+function createGsapMock() {
+  const timelines = [];
+
+  const apply = (target, properties) => {
+    if ("height" in properties) {
+      target.style.height = typeof properties.height === "number" ? `${properties.height}px` : properties.height;
+    }
+    if ("overflow" in properties) target.style.overflow = properties.overflow;
+    if ("opacity" in properties) target.style.opacity = String(properties.opacity);
+    if ("transformOrigin" in properties) target.style.transformOrigin = properties.transformOrigin;
+    if ("rotation" in properties) target.style.transform = `rotate(${properties.rotation}deg)`;
+  };
+
+  const mock = {
+    set: vi.fn((target, properties) => apply(target, properties)),
+    timeline: vi.fn((config = {}) => {
+      const steps = [];
+      const timeline = {
+        fromTo(target, from, to) {
+          steps.push({ target, from, to });
+          return timeline;
+        },
+        to(target, properties) {
+          steps.push({ target, from: {}, to: properties });
+          return timeline;
+        },
+        kill: vi.fn(),
+        progress: vi.fn((value) => {
+          steps.forEach(({ target, from, to }) => apply(target, value ? to : from));
+          return timeline;
+        }),
+        pause: vi.fn(() => timeline),
+        invalidate: vi.fn(() => timeline),
+        play: vi.fn(() => {
+          steps.forEach(({ target, to }) => apply(target, to));
+          return timeline;
+        }),
+        reverse: vi.fn(() => {
+          steps.forEach(({ target, from }) => apply(target, from));
+          return timeline;
+        }),
+      };
+      timelines.push({ config, timeline });
+      return timeline;
+    }),
+  };
+
+  return { mock, timelines };
+}
+
 describe("initFaq", () => {
   beforeEach(() => {
     document.body.innerHTML = "";
+    delete window.gsap;
   });
 
   it("keeps the first item open on load and syncs aria/roles", () => {
@@ -74,7 +127,6 @@ describe("initFaq", () => {
       "false",
       "false",
     ]);
-    // a11y wiring applied
     expect(toggles[0].getAttribute("aria-controls")).toBe(panels[0].id);
     expect(panels[0].getAttribute("aria-labelledby")).toBe(toggles[0].id);
     expect(panels[0].getAttribute("role")).toBe("region");
@@ -125,6 +177,34 @@ describe("initFaq", () => {
     toggles[3].dispatchEvent(new window.KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true }));
     expect(document.activeElement).toBe(toggles[0]); // wraps
   });
+
+  it("uses one GSAP timeline for the panel, answer, and SVG state", () => {
+    const { mock, timelines } = createGsapMock();
+    window.gsap = mock;
+    const { items, toggles, panels } = mount();
+    const cleanup = initFaq();
+
+    expect(panels[0].style.transition).toBe("none");
+    toggles[1].click();
+
+    expect(timelines).toHaveLength(4);
+    expect(timelines[0].config.defaults.duration).toBe(0.4);
+    expect(timelines[0].timeline.reverse).toHaveBeenCalled();
+    expect(timelines[1].timeline.play).toHaveBeenCalled();
+    expect(timelines[1].timeline.invalidate).toHaveBeenCalled();
+    expect(items.map((item) => item.getAttribute("data-open"))).toEqual([
+      "false",
+      "true",
+      "false",
+      "false",
+    ]);
+    expect(panels[0].style.height).toBe("0px");
+    expect(panels[1].style.height).toBe("auto");
+    expect(toggles[1].querySelector(".faq_icon-plus").style.opacity).toBe("0");
+
+    cleanup();
+    expect(panels[0].style.transition).toBe("");
+  });
 });
 
 describe("initFaq — CMS Collection List defaults", () => {
@@ -133,8 +213,6 @@ describe("initFaq — CMS Collection List defaults", () => {
   });
 
   it("opens the first item when the template marks nothing open", () => {
-    // A Collection List stamps one template across every item, so data-open is
-    // uniformly "false" and cannot single out the first.
     const { items, toggles } = mount({ openIndex: -1 });
     initFaq();
 

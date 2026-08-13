@@ -1,103 +1,173 @@
-/**
- * FAQ accordion: open and close behaviour.
- *
- * This module follows the same contract as the other modules. The DOM owns
- * all visual state through CSS. This module flips a single attribute,
- * `data-open`, on each item, plus the `aria-expanded` that matches it, on
- * its toggle. The card fade and the plus-or-minus icon are driven by the
- * section's scoped Embed CSS.
- *
- * The one exception is the panel height, and it is deliberate. EXE-72: the
- * reveal used to be a CSS grid track, from 0fr to 1fr, with no JS. That makes
- * the engine size the grid again on each frame, across the container and its
- * contents, and iOS Safari showed it as a shimmer in the answer text and the
- * icon. Removing the fade and the icon rotation did not stop it, so the
- * mechanism was at fault, not those properties. A px height on a normal box is
- * a far cheaper layout, so this module now measures the answer and sets the two
- * height values. The CSS still owns the duration and the curve.
- *
- * With no JS every panel keeps its natural height, so each answer stays
- * readable.
- *
- * Markup contract. See the "faq" section:
- *   <div class="faq_list" data-faq>            <!-- data-faq="multi" to allow many open -->
- *     <div class="faq_item" data-faq-item data-open="true|false">
- *       <button class="faq_toggle" data-faq-toggle aria-expanded="…">…</button>
- *       <div class="faq_panel" data-faq-panel>…</div>
- *     </div>
- *     …
- *   </div>
- *
- * Behaviour:
- *   - Single-open by default. If you open one item, its siblings close.
- *     Add `data-faq="multi"` to the root to let items open independently.
- *   - Add `data-faq-breakpoints="mbl,mbp"` to make the accordion interactive
- *     only at those breakpoints. Outside them, every item is open and static.
- *     Supported names come from the shared breakpoint map: dsk, tab, mbl, mbp.
- *   - The first item opens on load when the markup marks nothing open. This
- *     matters because the list is a CMS Collection List. The Collection
- *     List stamps every item from ONE template, so `data-open` is
- *     necessarily identical on all of them, and it cannot single out the
- *     first. An explicit `data-open="true"` in the markup still wins, and
- *     `data-faq-open="none"` on the root opts out entirely.
- *   - Toggles are real <button>s, so Enter, Space, and focus all come for
- *     free. This module adds roving focus across the headers. It uses
- *     ArrowUp, ArrowDown, Home, and End.
- *   - This module applies accessibility (a11y) wiring at init: ids,
- *     aria-controls, aria-labelledby, and role=region. This keeps the
- *     markup clean.
- */
-
 import { BREAKPOINT_QUERIES } from "../utils/breakpoints.js";
 import { qsa, qs, closestWithin, reduceMotion } from "../utils/dom.js";
 
 let uid = 0;
 
-/**
- * Set a panel's height, and animate it when asked.
- *
- * The CSS holds both resting states: height 0 when closed, auto when
- * [data-open]. This function sets an inline px height only WHILE the panel
- * moves, and clears it at the end. Two reasons to hand the resting states back:
- * the answer then stays hidden when no JS runs, which is what the Designer
- * canvas shows, and an open panel returns to `auto`, so it cannot clip after a
- * resize, a font swap or a rich-text reflow.
- *
- * `auto` cannot be a transition end point, which is why the travel needs a
- * measured px value at all.
- *
- * `from` arrives already measured, and the caller MUST read it before it changes
- * [data-open]. The CSS resting state follows that attribute, so a panel that is
- * about to close reads 0 the moment the attribute flips, and the travel would be
- * 0 to 0. That measurement is also what makes a mid-flight reversal smooth: it
- * is the CURRENT interpolated height, so a second tap turns the panel around
- * from where it is, not from where it started.
- */
-function setPanelHeight(entry, open, animate, from) {
-  const { panel, inner } = entry;
+function getGsap() {
+  const candidate = typeof window !== "undefined" ? window.gsap : null;
+  if (!candidate || typeof candidate.timeline !== "function" || typeof candidate.set !== "function") {
+    return null;
+  }
+  return candidate;
+}
 
-  if (!animate) {
-    panel.style.transition = "none";
-    panel.style.height = "";
-    void panel.offsetHeight; // commit it before the transition returns
-    panel.style.transition = "";
-    return;
+function parseDuration(value, fallback) {
+  const match = String(value || "").trim().match(/^([\d.]+)\s*(ms|s)$/i);
+  if (!match) return fallback;
+
+  const amount = Number(match[1]);
+  if (!Number.isFinite(amount)) return fallback;
+
+  return match[2].toLowerCase() === "ms" ? amount / 1000 : amount;
+}
+
+const easeCache = new Map();
+
+function cubicBezier(x1, y1, x2, y2) {
+  const sample = (a, b, t) => {
+    const inverse = 1 - t;
+    return 3 * inverse * inverse * t * a + 3 * inverse * t * t * b + t * t * t;
+  };
+
+  return (progress) => {
+    if (progress <= 0 || progress >= 1) return progress;
+
+    let lower = 0;
+    let upper = 1;
+    for (let i = 0; i < 16; i += 1) {
+      const midpoint = (lower + upper) / 2;
+      if (sample(x1, x2, midpoint) < progress) lower = midpoint;
+      else upper = midpoint;
+    }
+
+    return sample(y1, y2, (lower + upper) / 2);
+  };
+}
+
+function parseEase(value, fallback = "power1.out") {
+  const normalized = String(value || "").trim();
+  const match = normalized.match(
+    /^cubic-bezier\(\s*([-\d.]+)\s*,\s*([-\d.]+)\s*,\s*([-\d.]+)\s*,\s*([-\d.]+)\s*\)$/i,
+  );
+  if (!match) return normalized || fallback;
+
+  const key = match[0];
+  if (!easeCache.has(key)) {
+    easeCache.set(
+      key,
+      cubicBezier(Number(match[1]), Number(match[2]), Number(match[3]), Number(match[4])),
+    );
   }
 
-  const to = open ? inner.getBoundingClientRect().height : 0;
-  panel.style.height = `${from}px`;
-  void panel.offsetHeight; // commit the start value, else the browser sees one change
-  panel.style.height = `${to}px`;
+  return easeCache.get(key);
+}
 
-  const settle = (event) => {
-    if (event && event.propertyName !== "height") return;
-    panel.removeEventListener("transitionend", settle);
-    // Clearing the inline value returns the panel to the CSS state, which the
-    // current [data-open] already describes. So a listener left over from an
-    // earlier tap cannot put back a height that no longer applies.
-    panel.style.height = "";
+function getTiming(item) {
+  const styles =
+    typeof window !== "undefined" && typeof window.getComputedStyle === "function"
+      ? window.getComputedStyle(item)
+      : null;
+  return {
+    duration: parseDuration(styles?.getPropertyValue("--faq-dur"), 0.4),
+    ease: parseEase(styles?.getPropertyValue("--faq-ease")),
   };
-  panel.addEventListener("transitionend", settle);
+}
+
+function disableCssMotion(entry) {
+  [entry.panel, entry.inner, entry.plus, entry.minus].filter(Boolean).forEach((target) => {
+    target.style.transition = "none";
+  });
+}
+
+function setRestingState(entry, open) {
+  const { panel, inner, plus, minus } = entry;
+
+  panel.style.height = open ? "auto" : "0px";
+  panel.style.overflow = "hidden";
+  inner.style.opacity = open ? "1" : "0";
+
+  if (plus) {
+    plus.style.opacity = open ? "0" : "1";
+    plus.style.transformOrigin = "50% 50%";
+    plus.style.transform = `rotate(${open ? 90 : 0}deg)`;
+  }
+
+  if (minus) {
+    minus.style.opacity = open ? "1" : "0";
+    minus.style.transformOrigin = "50% 50%";
+    minus.style.transform = `rotate(${open ? 0 : -90}deg)`;
+  }
+}
+
+function createGsapMotion(entry, gsap) {
+  const timing = getTiming(entry.item);
+  const timeline = gsap.timeline({
+    paused: true,
+    defaults: {
+      duration: timing.duration,
+      ease: timing.ease,
+      overwrite: "auto",
+    },
+  });
+
+  timeline.fromTo(entry.panel, { height: 0 }, { height: "auto" });
+  timeline.to(entry.inner, { opacity: 1 }, 0);
+
+  if (entry.plus) {
+    timeline.to(
+      entry.plus,
+      {
+        opacity: 0,
+        rotation: 90,
+        transformOrigin: "50% 50%",
+        force3D: false,
+      },
+      0,
+    );
+  }
+
+  if (entry.minus) {
+    timeline.to(
+      entry.minus,
+      {
+        opacity: 1,
+        rotation: 0,
+        transformOrigin: "50% 50%",
+        force3D: false,
+      },
+      0,
+    );
+  }
+
+  function set(open, animate) {
+    if (!animate) {
+      timeline.progress(open ? 1 : 0).pause();
+      setRestingState(entry, open);
+      return;
+    }
+
+    timeline.invalidate();
+    if (open) timeline.play();
+    else timeline.reverse();
+  }
+
+  return {
+    set,
+    destroy() {
+      timeline.kill();
+      entry.panel.style.height = "";
+      entry.panel.style.overflow = "";
+      entry.inner.style.opacity = "";
+      [entry.plus, entry.minus].filter(Boolean).forEach((target) => {
+        target.style.opacity = "";
+        target.style.transform = "";
+        target.style.transformOrigin = "";
+      });
+      [entry.panel, entry.inner, entry.plus, entry.minus].filter(Boolean).forEach((target) => {
+        target.style.transition = "";
+      });
+    },
+  };
 }
 
 function parseBreakpoints(value) {
@@ -110,11 +180,14 @@ function parseBreakpoints(value) {
 }
 
 function setupFaq(root) {
+  if (root.hasAttribute("data-faq-ready")) return null;
+
   const items = qsa(root, "[data-faq-item]").filter((item) => item.closest("[data-faq]") === root);
-  if (!items.length) return;
+  if (!items.length) return null;
 
   const allowMulti = root.getAttribute("data-faq") === "multi";
   const activeBreakpoints = parseBreakpoints(root.getAttribute("data-faq-breakpoints"));
+  const gsap = getGsap();
   const mediaQueries = activeBreakpoints.map((breakpoint) =>
     window.matchMedia(BREAKPOINT_QUERIES[breakpoint])
   );
@@ -126,7 +199,6 @@ function setupFaq(root) {
       const panel = qs(item, "[data-faq-panel]");
       if (!toggle || !panel) return null;
 
-      // a11y wiring
       const toggleId = toggle.id || `${group}-t${i}`;
       const panelId = panel.id || `${group}-p${i}`;
       toggle.id = toggleId;
@@ -135,11 +207,21 @@ function setupFaq(root) {
       if (!panel.hasAttribute("role")) panel.setAttribute("role", "region");
       panel.setAttribute("aria-labelledby", toggleId);
 
-      // The answer keeps its natural height, and the panel clips it, so measure
-      // the inner and never the panel.
       const inner = panel.firstElementChild || panel;
 
-      return { item, toggle, panel, inner };
+      const entry = {
+        item,
+        toggle,
+        panel,
+        inner,
+        plus: qs(item, ".faq_icon-plus"),
+        minus: qs(item, ".faq_icon-minus"),
+        motion: null,
+      };
+
+      disableCssMotion(entry);
+      entry.motion = gsap ? createGsapMotion(entry, gsap) : null;
+      return entry;
     })
     .filter(Boolean);
 
@@ -149,29 +231,20 @@ function setupFaq(root) {
   let isActive = null;
 
   function setOpen(entry, open, animate = true) {
-    const shouldAnimate = animate && !reduceMotion();
-    // Measure BEFORE the attribute changes. See setPanelHeight: the CSS resting
-    // height follows [data-open], so afterwards a closing panel reads 0.
-    const from = shouldAnimate ? entry.panel.getBoundingClientRect().height : 0;
+    const shouldAnimate = animate && !reduceMotion() && Boolean(entry.motion);
     entry.item.setAttribute("data-open", open ? "true" : "false");
     entry.toggle.setAttribute("aria-expanded", open ? "true" : "false");
-    setPanelHeight(entry, open, shouldAnimate, from);
+    if (entry.motion) entry.motion.set(open, shouldAnimate);
+    else setRestingState(entry, open);
   }
 
-  // Capture the authored state before a static breakpoint forces everything
-  // open. This is the state to restore whenever the accordion becomes active.
   const initialOpen = entries.map((entry) => entry.item.getAttribute("data-open") === "true");
 
-  // A Collection List stamps every item from one template, so `data-open`
-  // is the same on all of them: either nothing is open, or, in multi mode,
-  // all of them are. As a fallback, open the first item, so the section
-  // never lands fully closed.
   const openCount = initialOpen.filter(Boolean).length;
 
   if (openCount === 0 && root.getAttribute("data-faq-open") !== "none") {
     initialOpen[0] = true;
   } else if (openCount > 1 && !allowMulti) {
-    // Single-open mode can't honour a template that opened everything.
     initialOpen.forEach((_, i) => {
       initialOpen[i] = i === 0;
     });
@@ -184,17 +257,14 @@ function setupFaq(root) {
     isActive = shouldBeActive;
     root.setAttribute("data-faq-active", shouldBeActive ? "true" : "false");
 
-    // Neither the first run nor a breakpoint change is a person opening an item,
-    // so both set the height at once, with no animation.
     entries.forEach((entry, i) => {
       if (shouldBeActive) {
         setOpen(entry, initialOpen[i], false);
       } else {
-        // Inactive means ordinary static content. It is fully open, with no
-        // expandable-state announcement and no click or keyboard behaviour.
         entry.item.setAttribute("data-open", "true");
         entry.toggle.removeAttribute("aria-expanded");
-        setPanelHeight(entry, true, false);
+        if (entry.motion) entry.motion.set(true, false);
+        else setRestingState(entry, true);
       }
     });
   }
@@ -203,20 +273,24 @@ function setupFaq(root) {
     if (!isActive) return;
     const isOpen = entry.item.getAttribute("data-open") === "true";
     if (!allowMulti && !isOpen) {
-      entries.forEach((other) => other !== entry && setOpen(other, false));
+      entries.forEach((other) => {
+        if (other !== entry && other.item.getAttribute("data-open") === "true") {
+          setOpen(other, false);
+        }
+      });
     }
     setOpen(entry, !isOpen);
   }
 
-  root.addEventListener("click", (e) => {
+  const onClick = (e) => {
     const toggle = closestWithin(root, e.target, "[data-faq-toggle]");
     if (!toggle) return;
     const entry = entries.find((x) => x.toggle === toggle);
     if (entry) activate(entry);
-  });
+  };
+  root.addEventListener("click", onClick);
 
-  // Roving focus across the headers. Buttons already handle Enter and Space.
-  root.addEventListener("keydown", (e) => {
+  const onKeydown = (e) => {
     if (!isActive) return;
     const toggle = closestWithin(root, e.target, "[data-faq-toggle]");
     if (!toggle) return;
@@ -230,14 +304,25 @@ function setupFaq(root) {
     if (next < 0) return;
     e.preventDefault();
     toggles[next].focus();
-  });
+  };
+  root.addEventListener("keydown", onKeydown);
 
   mediaQueries.forEach((query) => query.addEventListener("change", evaluateBreakpointState));
+  root.setAttribute("data-faq-ready", "true");
   evaluateBreakpointState();
+
+  return () => {
+    root.removeEventListener("click", onClick);
+    root.removeEventListener("keydown", onKeydown);
+    mediaQueries.forEach((query) => query.removeEventListener("change", evaluateBreakpointState));
+    entries.forEach((entry) => entry.motion?.destroy());
+    root.removeAttribute("data-faq-ready");
+  };
 }
 
 export function initFaq(root = document) {
-  qsa(root, "[data-faq]").forEach(setupFaq);
+  const cleanups = qsa(root, "[data-faq]").map(setupFaq).filter(Boolean);
+  return () => cleanups.forEach((cleanup) => cleanup());
 }
 
 export default initFaq;
