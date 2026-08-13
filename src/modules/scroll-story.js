@@ -7,6 +7,7 @@ const NAV_SELECTOR = "[data-scroll-story-nav]";
 const TRANSITION_START = 0.55;
 const EXIT_SCALE = 0.8;
 const EXIT_SHADE = 0.65;
+const DEFAULT_STEP_VH = 100;
 
 let uid = 0;
 
@@ -17,28 +18,91 @@ function directChildren(root, selector) {
   return container ? Array.from(container.children) : [];
 }
 
+function numberAttribute(root, name, fallback, min, max) {
+  const value = Number.parseFloat(root.getAttribute(name));
+  return Number.isFinite(value) ? clamp(value, min, max) : fallback;
+}
+
+function restoreAttribute(element, name, value) {
+  if (value === null) element.removeAttribute(name);
+  else element.setAttribute(name, value);
+}
+
+function prepareNav(root, count) {
+  const container = root.querySelector(NAV_SELECTOR);
+  if (!container) return { items: [], restore() {} };
+
+  const originals = Array.from(container.children);
+  const snapshots = originals.map((item) => ({
+    item,
+    hidden: item.hidden,
+    id: item.getAttribute("id"),
+    controls: item.getAttribute("aria-controls"),
+    label: item.getAttribute("aria-label"),
+    current: item.getAttribute("aria-current"),
+    type: item.getAttribute("type"),
+  }));
+  const generated = [];
+  const items = originals.slice(0, count);
+  const template = originals[0];
+
+  while (template && items.length < count) {
+    const item = template.cloneNode(true);
+    item.removeAttribute("id");
+    item.querySelectorAll("[id]").forEach((child) => child.removeAttribute("id"));
+    item.removeAttribute("aria-controls");
+    item.removeAttribute("aria-current");
+    item.removeAttribute("data-scroll-story-current");
+    item.setAttribute("data-scroll-story-generated", "");
+    container.append(item);
+    generated.push(item);
+    items.push(item);
+  }
+
+  originals.forEach((item, index) => {
+    item.hidden = index >= count;
+  });
+
+  return {
+    items,
+    restore() {
+      generated.forEach((item) => item.remove());
+      snapshots.forEach(({ item, hidden, id, controls, label, current, type }) => {
+        item.hidden = hidden;
+        restoreAttribute(item, "id", id);
+        restoreAttribute(item, "aria-controls", controls);
+        restoreAttribute(item, "aria-label", label);
+        restoreAttribute(item, "aria-current", current);
+        restoreAttribute(item, "type", type);
+        item.removeAttribute("data-scroll-story-current");
+      });
+    },
+  };
+}
+
 export function storyProgress({ sectionTop, sectionHeight, viewportHeight, scrollY }) {
   const distance = Math.max(sectionHeight - viewportHeight, 1);
   return clamp((scrollY - sectionTop) / distance);
 }
 
-export function storyFrame(progress, panelCount) {
+export function storyFrame(progress, panelCount, transitionStart = TRANSITION_START) {
   if (!Number.isFinite(panelCount) || panelCount < 1) {
     return { active: -1, panels: [] };
   }
 
   const bounded = clamp(Number.isFinite(progress) ? progress : 0);
+  const transition = clamp(transitionStart, 0, 0.95);
   const chapter = bounded * panelCount;
   const active = Math.min(Math.floor(chapter), panelCount - 1);
   const panels = Array.from({ length: panelCount }, (_, index) => {
     const incoming =
       index === 0
         ? 1
-        : clamp((chapter - (index - 1 + TRANSITION_START)) / (1 - TRANSITION_START));
+        : clamp((chapter - (index - 1 + transition)) / (1 - transition));
     const outgoing =
       index === panelCount - 1
         ? 0
-        : clamp((chapter - (index + TRANSITION_START)) / (1 - TRANSITION_START));
+        : clamp((chapter - (index + transition)) / (1 - transition));
 
     return {
       incoming,
@@ -54,10 +118,20 @@ function setupStory(root) {
   if (root.hasAttribute("data-scroll-story-bound")) return null;
 
   const panels = directChildren(root, PANELS_SELECTOR);
-  const navItems = directChildren(root, NAV_SELECTOR);
-  if (panels.length < 2 || panels.length !== navItems.length) return null;
+  if (panels.length < 2) return null;
 
   const storyId = `scroll-story-${++uid}`;
+  const nav = prepareNav(root, panels.length);
+  const navItems = nav.items;
+  const panelSnapshots = panels.map((panel) => ({
+    panel,
+    id: panel.getAttribute("id"),
+    index: panel.style.getPropertyValue("--scroll-story-index"),
+    current: panel.getAttribute("data-scroll-story-current"),
+    hidden: panel.getAttribute("aria-hidden"),
+  }));
+  const stepVh = numberAttribute(root, "data-scroll-story-step", DEFAULT_STEP_VH, 50, 200);
+  const transitionStart = numberAttribute(root, "data-scroll-story-transition", TRANSITION_START, 0, 0.95);
   const motionQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
   const widthQuery = window.matchMedia(`(min-width: ${BREAKPOINT_PX.tabletMin}px)`);
   let frameId = null;
@@ -69,14 +143,16 @@ function setupStory(root) {
 
   root.setAttribute("data-scroll-story-bound", "");
   root.style.setProperty("--scroll-story-count", String(panels.length));
-  root.style.setProperty("--scroll-story-height", `${panels.length + 1}00svh`);
+  root.style.setProperty("--scroll-story-height", `${100 + panels.length * stepVh}svh`);
 
   navItems.forEach((item, index) => {
     const panel = panels[index];
     if (!item.id) item.id = `${storyId}-nav-${index + 1}`;
     if (!panel.id) panel.id = `${storyId}-panel-${index + 1}`;
     item.setAttribute("aria-controls", panel.id);
-    item.setAttribute("aria-label", item.getAttribute("aria-label") || `Go to chapter ${index + 1}`);
+    if (item.hasAttribute("data-scroll-story-generated") || !item.hasAttribute("aria-label")) {
+      item.setAttribute("aria-label", `Go to chapter ${index + 1}`);
+    }
     if (item.tagName === "BUTTON" && !item.hasAttribute("type")) item.setAttribute("type", "button");
     panel.style.setProperty("--scroll-story-index", String(index));
   });
@@ -108,8 +184,9 @@ function setupStory(root) {
   function render() {
     frameId = null;
     if (mode !== "scroll") return;
+    measure();
     const progress = storyProgress({ sectionTop, sectionHeight, viewportHeight, scrollY: window.scrollY });
-    const state = storyFrame(progress, panels.length);
+    const state = storyFrame(progress, panels.length, transitionStart);
     root.style.setProperty("--scroll-story-progress", String(progress));
     state.panels.forEach((panelState, index) => {
       panels[index].style.setProperty("--scroll-story-in", String(panelState.incoming));
@@ -231,6 +308,14 @@ function setupStory(root) {
       item.removeAttribute("data-scroll-story-current");
       item.removeAttribute("aria-current");
     });
+    panelSnapshots.forEach(({ panel, id, index, current, hidden }) => {
+      restoreAttribute(panel, "id", id);
+      restoreAttribute(panel, "data-scroll-story-current", current);
+      restoreAttribute(panel, "aria-hidden", hidden);
+      if (index) panel.style.setProperty("--scroll-story-index", index);
+      else panel.style.removeProperty("--scroll-story-index");
+    });
+    nav.restore();
   };
 }
 

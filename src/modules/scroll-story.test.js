@@ -9,14 +9,13 @@ function mediaQuery(matches = false) {
   };
 }
 
-function mount({ count = 3, mismatch = false } = {}) {
+function mount({ count = 3, navCount = count, withNav = true } = {}) {
   const panels = Array.from({ length: count }, (_, index) => `<article><p>Chapter ${index + 1}</p></article>`).join("");
-  const navCount = mismatch ? count - 1 : count;
   const nav = Array.from({ length: navCount }, () => "<button><span></span></button>").join("");
   document.body.innerHTML = `
     <section data-scroll-story>
       <div data-scroll-story-panels>${panels}</div>
-      <div data-scroll-story-nav>${nav}</div>
+      ${withNav ? `<div data-scroll-story-nav>${nav}</div>` : ""}
     </section>`;
   const root = document.querySelector("[data-scroll-story]");
   Object.defineProperty(root, "offsetHeight", { configurable: true, value: 4000 });
@@ -76,6 +75,11 @@ describe("storyFrame", () => {
     expect(frame.panels).toHaveLength(6);
     expect(frame.active).toBe(5);
   });
+
+  it("supports a configurable transition window", () => {
+    const frame = storyFrame(0.2, 3, 0);
+    expect(frame.panels[1].incoming).toBeGreaterThan(0);
+  });
 });
 
 describe("initScrollStories", () => {
@@ -106,11 +110,60 @@ describe("initScrollStories", () => {
     expect(Number(root.style.getPropertyValue("--scroll-story-progress"))).toBeCloseTo(1 / 3);
   });
 
-  it("leaves mismatched content untouched so CSS fails open", () => {
-    const { root } = mount({ mismatch: true });
+  it("derives missing indicators from the authored template", () => {
+    const { root } = mount({ count: 6, navCount: 2 });
     initScrollStories();
-    expect(root.hasAttribute("data-scroll-story-bound")).toBe(false);
-    expect(root.hasAttribute("data-scroll-story-ready")).toBe(false);
+    const nav = Array.from(root.querySelectorAll("[data-scroll-story-nav] > *"));
+    expect(nav).toHaveLength(6);
+    expect(nav.slice(2).every((item) => item.hasAttribute("data-scroll-story-generated"))).toBe(true);
+    expect(nav[5].getAttribute("aria-label")).toBe("Go to chapter 6");
+    expect(root.style.getPropertyValue("--scroll-story-height")).toBe("700svh");
+  });
+
+  it("hides surplus indicators without blocking enhancement", () => {
+    const { root } = mount({ count: 2, navCount: 4 });
+    initScrollStories();
+    const nav = Array.from(root.querySelectorAll("[data-scroll-story-nav] > *"));
+    expect(nav.slice(2).every((item) => item.hidden)).toBe(true);
+    expect(root.hasAttribute("data-scroll-story-ready")).toBe(true);
+  });
+
+  it("enhances without optional indicator markup", () => {
+    const { root } = mount({ count: 4, withNav: false });
+    initScrollStories();
+    expect(root.style.getPropertyValue("--scroll-story-height")).toBe("500svh");
+    expect(root.hasAttribute("data-scroll-story-ready")).toBe(true);
+  });
+
+  it("supports a configurable per-chapter scroll distance", () => {
+    const { root } = mount({ count: 4 });
+    root.setAttribute("data-scroll-story-step", "75");
+    initScrollStories();
+    expect(root.style.getPropertyValue("--scroll-story-height")).toBe("400svh");
+  });
+
+  it("configures each component instance from its own slide count", () => {
+    document.body.innerHTML = `
+      <section data-scroll-story>
+        <div data-scroll-story-panels><article></article><article></article></div>
+        <div data-scroll-story-nav><button></button></div>
+      </section>
+      <section data-scroll-story>
+        <div data-scroll-story-panels>${"<article></article>".repeat(5)}</div>
+        <div data-scroll-story-nav><button></button></div>
+      </section>`;
+    const roots = Array.from(document.querySelectorAll("[data-scroll-story]"));
+    roots.forEach((root) => {
+      Object.defineProperty(root, "offsetHeight", { configurable: true, value: 4000 });
+      root.getBoundingClientRect = () => ({ top: -500, height: 4000 });
+    });
+
+    initScrollStories();
+
+    expect(roots[0].style.getPropertyValue("--scroll-story-height")).toBe("300svh");
+    expect(roots[1].style.getPropertyValue("--scroll-story-height")).toBe("600svh");
+    expect(roots[0].querySelectorAll("[data-scroll-story-nav] > *")).toHaveLength(2);
+    expect(roots[1].querySelectorAll("[data-scroll-story-nav] > *")).toHaveLength(5);
   });
 
   it("scrolls to a chapter when its existing dot is clicked", () => {
@@ -137,7 +190,8 @@ describe("initScrollStories", () => {
   });
 
   it("is idempotent and returns a complete cleanup", () => {
-    const { root } = mount();
+    const { root, panels } = mount({ count: 5, navCount: 1 });
+    panels[0].id = "authored-panel";
     const destroyFirst = initScrollStories();
     const destroySecond = initScrollStories();
     expect(root.hasAttribute("data-scroll-story-bound")).toBe(true);
@@ -146,5 +200,8 @@ describe("initScrollStories", () => {
     destroyFirst();
     expect(root.hasAttribute("data-scroll-story-bound")).toBe(false);
     expect(root.hasAttribute("data-scroll-story-ready")).toBe(false);
+    expect(root.querySelectorAll("[data-scroll-story-nav] > *")).toHaveLength(1);
+    expect(panels[0].id).toBe("authored-panel");
+    expect(panels[1].hasAttribute("id")).toBe(false);
   });
 });
