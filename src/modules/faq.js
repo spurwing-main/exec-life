@@ -79,6 +79,13 @@ function disableCssMotion(entry) {
   });
 }
 
+function disableTouchScale(icon) {
+  if (!icon || typeof window.matchMedia !== "function") return;
+  if (!window.matchMedia("(hover: hover) and (pointer: fine)").matches) {
+    icon.style.transform = "none";
+  }
+}
+
 function setRestingState(entry, open) {
   const { panel, inner, plus, minus } = entry;
 
@@ -111,11 +118,12 @@ function createGsapMotion(entry, gsap) {
   });
 
   timeline.fromTo(entry.panel, { height: 0 }, { height: "auto" });
-  timeline.to(entry.inner, { opacity: 1 }, 0);
+  timeline.fromTo(entry.inner, { opacity: 0 }, { opacity: 1 }, 0);
 
   if (entry.plus) {
-    timeline.to(
+    timeline.fromTo(
       entry.plus,
+      { opacity: 1, rotation: 0 },
       {
         opacity: 0,
         rotation: 90,
@@ -127,8 +135,9 @@ function createGsapMotion(entry, gsap) {
   }
 
   if (entry.minus) {
-    timeline.to(
+    timeline.fromTo(
       entry.minus,
+      { opacity: 0, rotation: -90 },
       {
         opacity: 1,
         rotation: 0,
@@ -163,6 +172,7 @@ function createGsapMotion(entry, gsap) {
         target.style.transform = "";
         target.style.transformOrigin = "";
       });
+      if (entry.icon) entry.icon.style.transform = "";
       [entry.panel, entry.inner, entry.plus, entry.minus].filter(Boolean).forEach((target) => {
         target.style.transition = "";
       });
@@ -216,10 +226,12 @@ function setupFaq(root) {
         inner,
         plus: qs(item, ".faq_icon-plus"),
         minus: qs(item, ".faq_icon-minus"),
+        icon: qs(item, ".faq_icon"),
         motion: null,
       };
 
       disableCssMotion(entry);
+      disableTouchScale(entry.icon);
       entry.motion = gsap ? createGsapMotion(entry, gsap) : null;
       return entry;
     })

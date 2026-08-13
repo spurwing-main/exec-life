@@ -202,6 +202,10 @@ describe("initFaq", () => {
     expect(panels[1].style.height).toBe("auto");
     expect(toggles[1].querySelector(".faq_icon-plus").style.opacity).toBe("0");
 
+    toggles[1].click();
+    expect(toggles[1].querySelector(".faq_icon-plus").style.opacity).toBe("1");
+    expect(toggles[1].querySelector(".faq_icon-minus").style.opacity).toBe("0");
+
     cleanup();
     expect(panels[0].style.transition).toBe("");
   });
