@@ -58,6 +58,7 @@ describe("storyFrame", () => {
     expect(storyFrame(0, 3).active).toBe(0);
     expect(storyFrame(0.5, 3).active).toBe(0);
     expect(storyFrame(0.67, 3).active).toBe(1);
+    expect(storyFrame(0.93, 3).active).toBe(2);
     expect(storyFrame(1, 3).active).toBe(2);
   });
 
@@ -76,6 +77,13 @@ describe("storyFrame", () => {
     const after = storyFrame(0.67, 3);
     expect(during.panels.map((panel) => panel.content)).toEqual([1, 0, 0]);
     expect(after.panels.map((panel) => panel.content)).toEqual([0, 1, 0]);
+  });
+
+  it.each([2, 3, 6])("gives the final chapter a settled end hold with %i panels", (count) => {
+    const start = count / (count + 0.25);
+    expect(storyFrame(start - 0.001, count).active).toBe(count - 2);
+    expect(storyFrame(start, count).active).toBe(count - 1);
+    expect(storyFrame(1, count).active).toBe(count - 1);
   });
 
   it("scales to arbitrary panel counts", () => {
@@ -178,7 +186,8 @@ describe("initScrollStories", () => {
     const { nav } = mount();
     initScrollStories();
     nav[2].querySelector("span").click();
-    expect(window.scrollTo).toHaveBeenCalledWith({ top: 3000, behavior: "smooth" });
+    expect(window.scrollTo.mock.calls[0][0].top).toBeCloseTo((3000 * 3) / 3.25);
+    expect(window.scrollTo.mock.calls[0][0].behavior).toBe("smooth");
   });
 
   it("supports arrow-key chapter navigation", () => {
@@ -186,7 +195,8 @@ describe("initScrollStories", () => {
     initScrollStories();
     nav[0].dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowLeft", bubbles: true }));
     expect(document.activeElement).toBe(nav[2]);
-    expect(window.scrollTo).toHaveBeenCalledWith({ top: 3000, behavior: "smooth" });
+    expect(window.scrollTo.mock.calls[0][0].top).toBeCloseTo((3000 * 3) / 3.25);
+    expect(window.scrollTo.mock.calls[0][0].behavior).toBe("smooth");
   });
 
   it("uses the readable static mode for reduced motion", () => {

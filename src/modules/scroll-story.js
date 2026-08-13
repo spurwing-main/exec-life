@@ -8,6 +8,7 @@ const TRANSITION_START = 0.15;
 const EXIT_SCALE = 0.8;
 const EXIT_SHADE = 0.65;
 const DEFAULT_STEP_VH = 100;
+const END_HOLD = 0.25;
 
 let uid = 0;
 
@@ -92,7 +93,7 @@ export function storyFrame(progress, panelCount, transitionStart = TRANSITION_ST
 
   const bounded = clamp(Number.isFinite(progress) ? progress : 0);
   const transition = clamp(transitionStart, 0, 0.95);
-  const chapter = bounded * panelCount;
+  const chapter = bounded * (panelCount + END_HOLD);
   const active = Math.min(Math.max(Math.floor(chapter) - 1, 0), panelCount - 1);
   const panels = Array.from({ length: panelCount }, (_, index) => {
     const incoming =
@@ -250,7 +251,7 @@ function setupStory(root) {
     if (mode !== "scroll") return;
     measure();
     const distance = Math.max(sectionHeight - viewportHeight, 0);
-    const progress = index === 0 ? 0 : (index + 1) / panels.length;
+    const progress = index === 0 ? 0 : (index + 1) / (panels.length + END_HOLD);
     window.scrollTo({
       top: sectionTop + distance * progress,
       behavior: "smooth",
