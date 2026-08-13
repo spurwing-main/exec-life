@@ -190,17 +190,58 @@
   const owner = self?.owner || DEFAULTS.owner;
   const project = self?.project || DEFAULTS.project;
   const commit = param("commit") || self?.ref || DEFAULTS.commit;
-  const localBase = (param("local") || DEFAULTS.localBase).replace(/\/$/, "");
+
+  // SECURITY. `?local=` and `?env=local` name a foreign origin, and this loader
+  // injects whatever they name as a module script. So they run first-party. Both
+  // are for a developer on a staging host, and a visitor must never reach them.
+  //
+  // Two guards, because either one alone is not enough:
+  //   1. Accept them only on a dev host. `?dev=1` cannot open this: an attacker
+  //      controls the whole query string, so a query parameter can never be the
+  //      gate. Only the hostname can.
+  //   2. Accept only a loopback or a LocalCan tunnel host, so a dev host cannot
+  //      be turned into a proxy for any origin either.
+  //
+  // `?commit=` needs no guard. It can only name a commit of this repository.
+  const localAllowed = (url) => {
+    try {
+      const u = new URL(url, location.href);
+      return (
+        u.hostname === "localhost" ||
+        u.hostname === "127.0.0.1" ||
+        u.hostname === "[::1]" ||
+        /\.localcan\.dev$/.test(u.hostname)
+      );
+    } catch {
+      return false;
+    }
+  };
+  const localParam = isDevHost ? param("local") : null;
+  if (param("local") && !isDevHost) {
+    console.warn("[el] ?local= ignored: it works on a dev host only.");
+  } else if (localParam && !localAllowed(localParam)) {
+    console.warn("[el] ?local= ignored: it allows a loopback or LocalCan host only.");
+  }
+  const localBase = ((localAllowed(localParam) ? localParam : null) || DEFAULTS.localBase).replace(
+    /\/$/,
+    ""
+  );
 
   // The env value is "local", "live", or "auto". "auto" means the loader
   // probes LocalCan and picks whichever source is up.
-  const envOverride = param("env") || persisted(KEYS.env);
+  //
+  // Read ?env= on a dev host only, for the same reason as ?local= above. On a
+  // production host the value is always "live".
+  const envOverride = (isDevHost ? param("env") : null) || persisted(KEYS.env);
   let env = envOverride;
   if (env !== "local" && env !== "live") env = devMode ? "auto" : "live";
+  if (!isDevHost) env = "live";
 
   // A persisted override must never be silently in effect. When session state
   // controls which bundle loads, the panel shows, so you can see and reset it.
-  const hasOverride = !!(envOverride || param("commit") || param("local"));
+  // Use the checked values, not the raw parameters. An ignored ?local= must not
+  // open the dev panel for a visitor.
+  const hasOverride = !!(envOverride || param("commit") || localParam);
 
   // -- resolve flags ---------------------------------------------------------
   // Precedence per feature: ?on= or ?off= URL parameter, then the persisted
