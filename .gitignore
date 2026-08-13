@@ -6,6 +6,8 @@
 # nothing to add here later. See local/README.md.
 /local/
 /outputs/
+# Delivery state — client name, site ids, open blockers. Never in a public repo.
+/.delivery/
 
 # Machine junk
 node_modules/
