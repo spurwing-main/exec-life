@@ -199,7 +199,6 @@ function setupStory(root) {
         String(1 - panelState.outgoing * (1 - EXIT_SCALE)),
       );
       panels[index].style.setProperty("--scroll-story-shade", String(panelState.outgoing * EXIT_SHADE));
-      panels[index].style.setProperty("--scroll-story-content-y", `${(1 - panelState.content) * 0.75}rem`);
     });
     setActive(state.active);
   }
@@ -218,7 +217,6 @@ function setupStory(root) {
       panel.style.removeProperty("--scroll-story-media-y");
       panel.style.removeProperty("--scroll-story-media-scale");
       panel.style.removeProperty("--scroll-story-shade");
-      panel.style.removeProperty("--scroll-story-content-y");
       panel.removeAttribute("aria-hidden");
     });
   }
