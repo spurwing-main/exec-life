@@ -28,6 +28,7 @@ import { initCalc } from "./src/modules/calc.js";
 import { initInsightsToc } from "./src/modules/insights-toc.js";
 import { initInsurerSort } from "./src/modules/insurer-sort.js";
 import { initDialogs } from "./src/modules/dialog.js";
+import { initScrollStories } from "./src/modules/scroll-story.js";
 
 const el = (window.el = window.el || {});
 el.functions = el.functions || {};
@@ -46,6 +47,7 @@ el.functions.initCalc = initCalc;
 el.functions.initInsightsToc = initInsightsToc;
 el.functions.initInsurerSort = initInsurerSort;
 el.functions.initDialogs = initDialogs;
+el.functions.initScrollStories = initScrollStories;
 
 /**
  * Maps each flag to its init function. Order matters: `anim` runs first
@@ -63,6 +65,7 @@ const MODULES = [
   ["insights-toc", initInsightsToc],
   ["insurer-sort", initInsurerSort],
   ["dialogs", initDialogs],
+  ["scroll-story", initScrollStories],
 ];
 
 /**
