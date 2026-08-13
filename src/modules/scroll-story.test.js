@@ -109,6 +109,10 @@ describe("initScrollStories", () => {
     expect(root.getAttribute("data-scroll-story-active")).toBe("1");
     expect(nav[0].getAttribute("aria-current")).toBe("step");
     expect(nav[0].getAttribute("aria-controls")).toBe(panels[0].id);
+    expect(panels[1].hasAttribute("data-scroll-story-next")).toBe(true);
+    expect(panels[1].hasAttribute("data-scroll-story-future")).toBe(true);
+    expect(panels[2].hasAttribute("data-scroll-story-next")).toBe(false);
+    expect(panels[2].hasAttribute("data-scroll-story-future")).toBe(true);
   });
 
   it("applies the enhanced CSS gate before measuring its scroll height", () => {
@@ -221,5 +225,7 @@ describe("initScrollStories", () => {
     expect(root.querySelectorAll("[data-scroll-story-nav] > *")).toHaveLength(1);
     expect(panels[0].id).toBe("authored-panel");
     expect(panels[1].hasAttribute("id")).toBe(false);
+    expect(panels.every((panel) => !panel.hasAttribute("data-scroll-story-next"))).toBe(true);
+    expect(panels.every((panel) => !panel.hasAttribute("data-scroll-story-future"))).toBe(true);
   });
 });

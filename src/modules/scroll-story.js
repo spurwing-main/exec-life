@@ -129,6 +129,8 @@ function setupStory(root) {
     id: panel.getAttribute("id"),
     index: panel.style.getPropertyValue("--scroll-story-index"),
     current: panel.getAttribute("data-scroll-story-current"),
+    next: panel.getAttribute("data-scroll-story-next"),
+    future: panel.getAttribute("data-scroll-story-future"),
     hidden: panel.getAttribute("aria-hidden"),
   }));
   const stepVh = numberAttribute(root, "data-scroll-story-step", DEFAULT_STEP_VH, 50, 200);
@@ -159,6 +161,10 @@ function setupStory(root) {
   });
 
   function setActive(index) {
+    panels.forEach((panel, panelIndex) => {
+      panel.toggleAttribute("data-scroll-story-next", mode === "scroll" && panelIndex === index + 1);
+      panel.toggleAttribute("data-scroll-story-future", mode === "scroll" && panelIndex > index);
+    });
     if (index === active) return;
     active = index;
     root.setAttribute("data-scroll-story-active", String(index + 1));
@@ -217,6 +223,8 @@ function setupStory(root) {
       panel.style.removeProperty("--scroll-story-media-y");
       panel.style.removeProperty("--scroll-story-media-scale");
       panel.style.removeProperty("--scroll-story-shade");
+      panel.removeAttribute("data-scroll-story-next");
+      panel.removeAttribute("data-scroll-story-future");
       panel.removeAttribute("aria-hidden");
     });
   }
@@ -307,9 +315,11 @@ function setupStory(root) {
       item.removeAttribute("data-scroll-story-current");
       item.removeAttribute("aria-current");
     });
-    panelSnapshots.forEach(({ panel, id, index, current, hidden }) => {
+    panelSnapshots.forEach(({ panel, id, index, current, next, future, hidden }) => {
       restoreAttribute(panel, "id", id);
       restoreAttribute(panel, "data-scroll-story-current", current);
+      restoreAttribute(panel, "data-scroll-story-next", next);
+      restoreAttribute(panel, "data-scroll-story-future", future);
       restoreAttribute(panel, "aria-hidden", hidden);
       if (index) panel.style.setProperty("--scroll-story-index", index);
       else panel.style.removeProperty("--scroll-story-index");
