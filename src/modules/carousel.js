@@ -124,6 +124,40 @@ function contentInsetAlign(viewport) {
   };
 }
 
+/**
+ * Decide which arrows go back and which go forward.
+ *
+ * Exported for the tests, and it is the riskiest logic in this module. An
+ * explicit marker wins. After that the decision falls to DOM ORDER: the first
+ * arrow in a control group goes back. So a person who drags the two arrows in
+ * the Designer to swap them visually also swaps what they do, and nothing in
+ * the Designer shows that order carries meaning.
+ *
+ * A group is the arrows' shared parent, because one carousel can have more than
+ * one control surface. A header pair on a wide screen and a separate footer pair
+ * on a narrow one must each resolve on their own.
+ *
+ * @param {Element[]} arrows every element with [data-carousel-arrow]
+ * @param {Element} root the carousel root, used when an arrow has no parent
+ * @returns {{prevs: Element[], nexts: Element[]}}
+ */
+export function resolveArrowDirection(arrows, root) {
+  const groups = new Map();
+  arrows.forEach((a) => {
+    const key = a.parentElement || root;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(a);
+  });
+  const isPrev = (a) => {
+    if (a.hasAttribute("data-carousel-next")) return false;
+    if (a.hasAttribute("data-carousel-prev") || a.classList.contains("is-prev")) return true;
+    if (/prev/i.test(a.getAttribute("data-wf--slider-arrow--variant") || "")) return true;
+    const group = groups.get(a.parentElement || root) || [];
+    return group.length > 1 && group[0] === a;
+  };
+  return { prevs: arrows.filter(isPrev), nexts: arrows.filter((a) => !isPrev(a)) };
+}
+
 function setupCarousel(root) {
   const viewport = qs(root, "[data-carousel-viewport]");
   if (!viewport) return;
@@ -198,21 +232,7 @@ function setupCarousel(root) {
   // [data-carousel-prev] or [data-carousel-next] marker still wins. Prev
   // arrows get `is-prev`, which the CSS uses to rotate the icon 180deg.
   const arrows = qsa(root, "[data-carousel-arrow]");
-  const groups = new Map();
-  arrows.forEach((a) => {
-    const key = a.parentElement || root;
-    if (!groups.has(key)) groups.set(key, []);
-    groups.get(key).push(a);
-  });
-  const isPrevArrow = (a) => {
-    if (a.hasAttribute("data-carousel-next")) return false;
-    if (a.hasAttribute("data-carousel-prev") || a.classList.contains("is-prev")) return true;
-    if (/prev/i.test(a.getAttribute("data-wf--slider-arrow--variant") || "")) return true;
-    const group = groups.get(a.parentElement || root) || [];
-    return group.length > 1 && group[0] === a;
-  };
-  const prevs = arrows.filter(isPrevArrow);
-  const nexts = arrows.filter((a) => !isPrevArrow(a));
+  const { prevs, nexts } = resolveArrowDirection(arrows, root);
   prevs.forEach((p) => p.classList.add("is-prev"));
   prevs.forEach((p) => wireControl(p, () => embla.scrollPrev()));
   nexts.forEach((n) => wireControl(n, () => embla.scrollNext()));
@@ -298,6 +318,7 @@ function setupCarousel(root) {
     // the root, which lets the CSS hide the controls, and disable each arrow.
     root.setAttribute("data-carousel-active", isActive() ? "true" : "false");
     if (!isActive()) {
+      root.setAttribute("data-carousel-scrollable", "false");
       prevs.forEach((p) => setDisabled(p, true));
       nexts.forEach((n) => setDisabled(n, true));
       viewport.setAttribute("data-draggable", "false");
@@ -318,6 +339,17 @@ function setupCarousel(root) {
     nexts.forEach((n) => setDisabled(n, !canNext));
     // Grab cursor only when there is somewhere to scroll.
     viewport.setAttribute("data-draggable", canPrev || canNext ? "true" : "false");
+
+    // A slider can have nothing to scroll for TWO reasons, and the EXE-85 fix
+    // covered only the first:
+    //   1. a breakpoint made Embla inactive, which data-carousel-active reports;
+    //   2. every slide already fits, so there is one snap and no travel.
+    // The second one left both arrows on screen, disabled and inert. That is a
+    // dead control, and the CSS could not hide it, because the slider IS active.
+    // So report the two states apart. data-carousel-active answers "is Embla
+    // driving this", and data-carousel-scrollable answers "is there anywhere to
+    // go". The CSS hides the controls when either one is false.
+    root.setAttribute("data-carousel-scrollable", canPrev || canNext ? "true" : "false");
     (embla.slideNodes() || []).forEach((slide, i) =>
       slide.setAttribute("data-active", i === selected ? "true" : "false")
     );
