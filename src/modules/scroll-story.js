@@ -1,26 +1,3 @@
-/**
- * Scroll-owned chapter stories for the reusable Why Executive Life component.
- *
- * The component keeps its existing Webflow-authored slides and navigation.
- * JavaScript only measures the section, stamps state attributes, and writes
- * normalized progress values for the component-scoped CSS to render.
- *
- * Markup contract:
- *   <section data-scroll-story>
- *     <div data-scroll-story-panels>
- *       <div>...copy and media...</div>
- *       ...
- *     </div>
- *     <div data-scroll-story-nav>
- *       <button>...</button>
- *       ...
- *     </div>
- *   </section>
- *
- * Panels and navigation items pair by position. The DOM fails open: without
- * `data-scroll-story-ready` the CSS presents the authored static layout.
- */
-
 import { BREAKPOINT_PX } from "../utils/breakpoints.js";
 import { closestWithin, qsa, reduceMotion } from "../utils/dom.js";
 
@@ -28,6 +5,8 @@ const ROOT_SELECTOR = "[data-scroll-story]";
 const PANELS_SELECTOR = "[data-scroll-story-panels]";
 const NAV_SELECTOR = "[data-scroll-story-nav]";
 const TRANSITION_START = 0.55;
+const EXIT_SCALE = 0.8;
+const EXIT_SHADE = 0.65;
 
 let uid = 0;
 
@@ -38,17 +17,11 @@ function directChildren(root, selector) {
   return container ? Array.from(container.children) : [];
 }
 
-/** Normalize the section's current document position to a reversible 0–1 range. */
 export function storyProgress({ sectionTop, sectionHeight, viewportHeight, scrollY }) {
   const distance = Math.max(sectionHeight - viewportHeight, 1);
   return clamp((scrollY - sectionTop) / distance);
 }
 
-/**
- * Return the visual state for every panel at a normalized story progress.
- * Each new chapter spends the final part of the preceding scroll segment
- * rising over the old image. The old image scales and dims by the same value.
- */
 export function storyFrame(progress, panelCount) {
   if (!Number.isFinite(panelCount) || panelCount < 1) {
     return { active: -1, panels: [] };
@@ -143,8 +116,11 @@ function setupStory(root) {
       panels[index].style.setProperty("--scroll-story-out", String(panelState.outgoing));
       panels[index].style.setProperty("--scroll-story-content", String(panelState.content));
       panels[index].style.setProperty("--scroll-story-media-y", `${(1 - panelState.incoming) * 100}%`);
-      panels[index].style.setProperty("--scroll-story-media-scale", String(1 - panelState.outgoing * 0.08));
-      panels[index].style.setProperty("--scroll-story-shade", String(panelState.outgoing * 0.28));
+      panels[index].style.setProperty(
+        "--scroll-story-media-scale",
+        String(1 - panelState.outgoing * (1 - EXIT_SCALE)),
+      );
+      panels[index].style.setProperty("--scroll-story-shade", String(panelState.outgoing * EXIT_SHADE));
       panels[index].style.setProperty("--scroll-story-content-y", `${(1 - panelState.content) * 0.75}rem`);
     });
     setActive(state.active);
@@ -181,8 +157,6 @@ function setupStory(root) {
 
     mode = next;
     root.setAttribute("data-scroll-story-mode", mode);
-    // Ready must land before measuring scroll mode: it is the CSS gate that
-    // expands the static fail-open stack into the tall sticky track.
     root.setAttribute("data-scroll-story-ready", "");
     if (mode === "scroll") {
       measure();
