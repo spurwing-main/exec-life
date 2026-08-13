@@ -56,28 +56,36 @@ describe("storyProgress", () => {
 describe("storyFrame", () => {
   it("maps progress to the three positional chapters", () => {
     expect(storyFrame(0, 3).active).toBe(0);
-    expect(storyFrame(0.34, 3).active).toBe(1);
-    expect(storyFrame(0.67, 3).active).toBe(2);
+    expect(storyFrame(0.5, 3).active).toBe(0);
+    expect(storyFrame(0.67, 3).active).toBe(1);
+    expect(storyFrame(1, 3).active).toBe(2);
   });
 
   it("creates a reversible incoming and outgoing image stack", () => {
-    const before = storyFrame(0.15, 3);
-    const during = storyFrame(0.3, 3);
-    const after = storyFrame(0.34, 3);
+    const before = storyFrame(0.3, 3);
+    const during = storyFrame(0.5, 3);
+    const after = storyFrame(0.67, 3);
     expect(before.panels[1].incoming).toBe(0);
     expect(during.panels[1].incoming).toBeGreaterThan(0);
     expect(during.panels[0].outgoing).toBe(during.panels[1].incoming);
     expect(after.panels[1].incoming).toBe(1);
   });
 
+  it("holds copy until the incoming image takeover completes", () => {
+    const during = storyFrame(0.5, 3);
+    const after = storyFrame(0.67, 3);
+    expect(during.panels.map((panel) => panel.content)).toEqual([1, 0, 0]);
+    expect(after.panels.map((panel) => panel.content)).toEqual([0, 1, 0]);
+  });
+
   it("scales to arbitrary panel counts", () => {
-    const frame = storyFrame(0.9, 6);
+    const frame = storyFrame(1, 6);
     expect(frame.panels).toHaveLength(6);
     expect(frame.active).toBe(5);
   });
 
   it("supports a configurable transition window", () => {
-    const frame = storyFrame(0.2, 3, 0);
+    const frame = storyFrame(0.5, 3, 0.25);
     expect(frame.panels[1].incoming).toBeGreaterThan(0);
   });
 });
@@ -106,7 +114,7 @@ describe("initScrollStories", () => {
 
     initScrollStories();
 
-    expect(root.getAttribute("data-scroll-story-active")).toBe("2");
+    expect(root.getAttribute("data-scroll-story-active")).toBe("1");
     expect(Number(root.style.getPropertyValue("--scroll-story-progress"))).toBeCloseTo(1 / 3);
   });
 
@@ -170,7 +178,7 @@ describe("initScrollStories", () => {
     const { nav } = mount();
     initScrollStories();
     nav[2].querySelector("span").click();
-    expect(window.scrollTo).toHaveBeenCalledWith({ top: 2000, behavior: "smooth" });
+    expect(window.scrollTo).toHaveBeenCalledWith({ top: 3000, behavior: "smooth" });
   });
 
   it("supports arrow-key chapter navigation", () => {
@@ -178,7 +186,7 @@ describe("initScrollStories", () => {
     initScrollStories();
     nav[0].dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowLeft", bubbles: true }));
     expect(document.activeElement).toBe(nav[2]);
-    expect(window.scrollTo).toHaveBeenCalledWith({ top: 2000, behavior: "smooth" });
+    expect(window.scrollTo).toHaveBeenCalledWith({ top: 3000, behavior: "smooth" });
   });
 
   it("uses the readable static mode for reduced motion", () => {

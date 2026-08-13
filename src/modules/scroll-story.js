@@ -4,7 +4,7 @@ import { closestWithin, qsa, reduceMotion } from "../utils/dom.js";
 const ROOT_SELECTOR = "[data-scroll-story]";
 const PANELS_SELECTOR = "[data-scroll-story-panels]";
 const NAV_SELECTOR = "[data-scroll-story-nav]";
-const TRANSITION_START = 0.55;
+const TRANSITION_START = 0.15;
 const EXIT_SCALE = 0.8;
 const EXIT_SHADE = 0.65;
 const DEFAULT_STEP_VH = 100;
@@ -93,21 +93,21 @@ export function storyFrame(progress, panelCount, transitionStart = TRANSITION_ST
   const bounded = clamp(Number.isFinite(progress) ? progress : 0);
   const transition = clamp(transitionStart, 0, 0.95);
   const chapter = bounded * panelCount;
-  const active = Math.min(Math.floor(chapter), panelCount - 1);
+  const active = Math.min(Math.max(Math.floor(chapter) - 1, 0), panelCount - 1);
   const panels = Array.from({ length: panelCount }, (_, index) => {
     const incoming =
       index === 0
         ? 1
-        : clamp((chapter - (index - 1 + transition)) / (1 - transition));
+        : clamp((chapter - (index + transition)) / (1 - transition));
     const outgoing =
       index === panelCount - 1
         ? 0
-        : clamp((chapter - (index + transition)) / (1 - transition));
+        : clamp((chapter - (index + 1 + transition)) / (1 - transition));
 
     return {
       incoming,
       outgoing,
-      content: clamp(incoming - outgoing),
+      content: index === active ? 1 : 0,
     };
   });
 
@@ -250,7 +250,7 @@ function setupStory(root) {
     if (mode !== "scroll") return;
     measure();
     const distance = Math.max(sectionHeight - viewportHeight, 0);
-    const progress = index / panels.length;
+    const progress = index === 0 ? 0 : (index + 1) / panels.length;
     window.scrollTo({
       top: sectionTop + distance * progress,
       behavior: "smooth",
