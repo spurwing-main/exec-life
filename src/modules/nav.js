@@ -24,7 +24,14 @@ import { qsa } from "../utils/dom.js";
 /*  Scroll auto-hide                                                         */
 /* ------------------------------------------------------------------------- */
 
-const MOVE_DELTA = 6;
+/* Sustained travel required before the bar flips, measured from where the
+   current direction run began — not frame to frame. The old frame-delta of 6px
+   sat below the noise floor of touch momentum, so an 8px wobble could flip the
+   bar six times in 170ms and every flip restarted the 350ms transform, which
+   read as the bar snapping rather than moving. Revealing is deliberately
+   eagerer than hiding: losing the nav is the costlier mistake. */
+const HIDE_AFTER = 64;
+const SHOW_AFTER = 32;
 
 function thresholdPx(nav) {
   const raw = (nav.getAttribute("data-nav-threshold") || "").trim();
@@ -35,17 +42,54 @@ function thresholdPx(nav) {
 
 function setupScrollHide(nav) {
   let lastY = window.scrollY || window.pageYOffset;
+  /* Where the current run of same-direction scrolling started. Distance is
+     measured from here, so a reversal restarts the count instead of flipping. */
+  let anchorY = lastY;
+  let runDir = 0;
   let ticking = false;
+
+  const show = () => nav.setAttribute("data-nav-hidden", "false");
 
   const update = () => {
     ticking = false;
     const y = window.scrollY || window.pageYOffset;
+    const delta = y - lastY;
+    const dir = delta > 0 ? 1 : delta < 0 ? -1 : 0;
 
+    /* Inside the reveal zone the bar is always shown, and the run resets so
+       leaving the zone needs fresh travel to hide. */
     if (y <= thresholdPx(nav)) {
-      nav.setAttribute("data-nav-hidden", "false");
-    } else if (Math.abs(y - lastY) > MOVE_DELTA) {
-      nav.setAttribute("data-nav-hidden", y > lastY ? "true" : "false");
+      show();
+      anchorY = y;
+      runDir = 0;
+      lastY = y;
+      return;
     }
+
+    /* The menu owns the screen while it is open; never pull the bar out from
+       under it. */
+    if (nav.querySelector('[data-nav-mobile].is-open')) {
+      show();
+      anchorY = y;
+      runDir = 0;
+      lastY = y;
+      return;
+    }
+
+    if (dir !== 0 && dir !== runDir) {
+      runDir = dir;
+      anchorY = lastY;
+    }
+
+    const travelled = Math.abs(y - anchorY);
+    if (runDir === 1 && travelled > HIDE_AFTER) {
+      nav.setAttribute("data-nav-hidden", "true");
+      anchorY = y;
+    } else if (runDir === -1 && travelled > SHOW_AFTER) {
+      show();
+      anchorY = y;
+    }
+
     lastY = y;
   };
 
