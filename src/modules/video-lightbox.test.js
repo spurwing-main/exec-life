@@ -65,15 +65,26 @@ describe("video lightbox", () => {
     expect(document.querySelector("[data-video-frame] > iframe")).not.toBeNull();
   });
 
-  /* Removing the iframe is what stops the audio. If this regresses, a closed
-     lightbox keeps talking over the page. */
-  it("removes the player on close", () => {
+  /* Blanking src is what stops the audio. If this regresses, a closed lightbox
+     keeps talking over the page. */
+  it("stops playback on close", () => {
     const el = mount();
     el.trigger.click();
-    expect(el.frame()).not.toBeNull();
+    expect(el.frame().src).toContain("eac2HS2JtFk");
 
     el.dialog.close();
-    expect(el.frame()).toBeNull();
+    expect(el.frame().src).toBe("about:blank");
+  });
+
+  /* The dialog fades out over a second. Removing the player on close empties
+     the panel while it is still on screen and it collapses to nothing as it
+     fades, which is what this keeps fixed. */
+  it("keeps the player in the DOM through the closing fade", () => {
+    const el = mount();
+    el.trigger.click();
+
+    el.dialog.close();
+    expect(el.frame()).not.toBeNull();
   });
 
   it("does not stack players when opened twice", () => {
@@ -147,12 +158,12 @@ describe("dialog without the marker attribute", () => {
     expect(document.querySelector("[data-dialog-panel] > iframe")).not.toBeNull();
   });
 
-  it("still removes the player on close, so the audio stops", () => {
+  it("still stops playback on close, so the audio stops", () => {
     const el = mountModal();
     el.trigger.click();
-    expect(el.dialog.querySelector("iframe")).not.toBeNull();
+    expect(el.dialog.querySelector("iframe").src).toContain("eac2HS2JtFk");
 
     el.dialog.close();
-    expect(el.dialog.querySelector("iframe")).toBeNull();
+    expect(el.dialog.querySelector("iframe").src).toBe("about:blank");
   });
 });

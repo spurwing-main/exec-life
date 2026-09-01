@@ -64,9 +64,28 @@ function mountPoint(dialog) {
   return qs(dialog, "[data-video-frame]") || qs(dialog, "[data-dialog-panel]") || dialog;
 }
 
+/** Take the player out entirely. Only safe while the dialog is not visible. */
 function clear(dialog) {
-  const mount = mountPoint(dialog);
-  qsa(mount, "iframe").forEach((frame) => frame.remove());
+  qsa(mountPoint(dialog), "iframe").forEach((frame) => frame.remove());
+}
+
+/**
+ * Stop playback without removing the player.
+ *
+ * The dialog fades out rather than vanishing — the modal Embed transitions
+ * opacity and `display` with `allow-discrete`. Removing the iframe on `close`
+ * therefore empties the panel while it is still on screen, and you watch it
+ * collapse to nothing over the length of the fade.
+ *
+ * Blanking `src` ends the video and its audio at once, which is the part that
+ * actually has to be immediate, and leaves the element holding its 16:9 box
+ * for the rest of the animation. The empty iframe is removed by `clear()` on
+ * the next open; one blank iframe costs nothing in the meantime.
+ */
+function stop(dialog) {
+  qsa(mountPoint(dialog), "iframe").forEach((frame) => {
+    frame.src = "about:blank";
+  });
 }
 
 function open(trigger) {
@@ -126,7 +145,7 @@ function bindDialog(dialog) {
   dialog.setAttribute("data-video-dialog-bound", "1");
 
   // Fires for every close path: the close button, the backdrop, and Escape.
-  dialog.addEventListener("close", () => clear(dialog));
+  dialog.addEventListener("close", () => stop(dialog));
 }
 
 export function initVideoLightbox(root = document) {
