@@ -375,3 +375,80 @@ describe("initCalc", () => {
     expect(second.textContent).toBe("£144.84");
   });
 });
+
+/**
+ * Pointer capture on the band slider.
+ *
+ * Reported 2026-09-01: use the slider on a phone, then tap the hamburger —
+ * the slider moves and the menu does nothing. A touch on a range input gets
+ * implicit pointer capture, and while it is held every pointer event on the
+ * page is retargeted to the slider. The nav is not broken; it never receives
+ * the tap.
+ */
+describe("band slider pointer capture", () => {
+  /** jsdom has no PointerEvent; the module only reads `pointerId`. */
+  function pointer(type, { pointerId = 1, clientX = 0, clientY = 0 } = {}) {
+    const event = new Event(type, { bubbles: true, cancelable: true });
+    Object.assign(event, { pointerId, clientX, clientY });
+    return event;
+  }
+
+  /** Track capture by hand — jsdom's implementation is a no-op stub. */
+  function trackCapture(band) {
+    const held = new Set();
+    band.hasPointerCapture = (id) => held.has(id);
+    band.setPointerCapture = (id) => held.add(id);
+    band.releasePointerCapture = (id) => held.delete(id);
+    return held;
+  }
+
+  it("keeps vertical scrolling with the page", () => {
+    const el = mount({ premium: "100" });
+    initCalc();
+    expect(el.band.style.touchAction).toBe("pan-y");
+  });
+
+  it("releases the capture the browser took on pointerup", () => {
+    const el = mount({ premium: "100" });
+    initCalc();
+    const held = trackCapture(el.band);
+
+    el.band.dispatchEvent(pointer("pointerdown"));
+    el.band.setPointerCapture(1); // what the browser does implicitly on touch
+    expect(held.has(1)).toBe(true);
+
+    el.band.dispatchEvent(pointer("pointerup"));
+    expect(held.has(1)).toBe(false);
+  });
+
+  it("releases it on pointercancel too", () => {
+    const el = mount({ premium: "100" });
+    initCalc();
+    const held = trackCapture(el.band);
+
+    el.band.dispatchEvent(pointer("pointerdown"));
+    el.band.setPointerCapture(1);
+    el.band.dispatchEvent(pointer("pointercancel"));
+    expect(held.has(1)).toBe(false);
+  });
+
+  /* The failsafe: a stranded capture retargets the next tap to the slider, so
+     the tap that should have opened the menu arrives here instead. Hand the
+     capture back so the one after it lands where the user aimed. */
+  it("hands back a stranded capture when the tap was outside the slider", () => {
+    const el = mount({ premium: "100" });
+    initCalc();
+    const held = trackCapture(el.band);
+
+    el.band.dispatchEvent(pointer("pointerdown"));
+    el.band.setPointerCapture(1);
+    // No pointerup: the gesture ended somewhere the element never heard about.
+    expect(held.has(1)).toBe(true);
+
+    // jsdom gives every element a zero-size rect, so any point reads as outside.
+    document.dispatchEvent(pointer("pointerdown", { clientX: 400, clientY: 40 }));
+
+    expect(held.has(1)).toBe(false);
+    expect(el.root.hasAttribute("data-calc-dragging")).toBe(false);
+  });
+});

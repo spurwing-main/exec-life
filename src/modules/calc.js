@@ -253,19 +253,76 @@ function setupCalc(root) {
       frame = requestAnimationFrame(tick);
     };
 
-    const release = () => {
+    /**
+     * The pointer currently dragging the thumb, so its capture can be handed
+     * back.
+     *
+     * A touch on a range input gets IMPLICIT pointer capture from the browser.
+     * While that capture is held, every pointer event on the page is
+     * retargeted to this input — so a tap on the nav's hamburger moves the
+     * slider and never reaches the nav. The capture is supposed to end with
+     * the gesture, but a touch that ends off the control, or one the compositor
+     * takes over mid-drag, can leave it held with no further event on the
+     * element to clear it. Releasing explicitly costs nothing when the browser
+     * already did it, and is the whole fix when it did not.
+     */
+    let capturedPointer = null;
+
+    const dropCapture = () => {
+      if (capturedPointer === null) return;
+      const id = capturedPointer;
+      capturedPointer = null;
+      // Guarded: jsdom and older engines have neither method.
+      if (typeof bandInput.hasPointerCapture !== "function") return;
+      if (bandInput.hasPointerCapture(id)) bandInput.releasePointerCapture(id);
+    };
+
+    const release = (event) => {
+      if (event && event.pointerId !== undefined) capturedPointer = event.pointerId;
+      dropCapture();
       if (!root.hasAttribute("data-calc-dragging")) return;
       settle(clamp(Math.round(Number(bandInput.value)), 0, maxBand));
     };
 
     bandInput.step = "any";
-    bandInput.addEventListener("pointerdown", () => {
+
+    /* The thumb is dragged horizontally, so vertical page scrolling must stay
+       with the page. Without this the browser has to guess mid-gesture, and
+       the ambiguous case is the one that strands the capture. Set from JS
+       beside `step` so both live with the behaviour they belong to. */
+    bandInput.style.touchAction = "pan-y";
+
+    bandInput.addEventListener("pointerdown", (event) => {
       cancelAnimationFrame(frame);
+      capturedPointer = event.pointerId ?? null;
       root.setAttribute("data-calc-dragging", "");
     });
     bandInput.addEventListener("pointerup", release);
     bandInput.addEventListener("pointercancel", release);
+    bandInput.addEventListener("lostpointercapture", () => {
+      capturedPointer = null;
+    });
     bandInput.addEventListener("blur", release);
+
+    /* Failsafe. If a capture is somehow still held, this pointerdown has been
+       retargeted here from wherever the user actually tapped. Hand the capture
+       back so the tap after this one lands where it was aimed. */
+    document.addEventListener(
+      "pointerdown",
+      (event) => {
+        if (capturedPointer === null) return;
+        const rect = bandInput.getBoundingClientRect();
+        const inside =
+          event.clientX >= rect.left &&
+          event.clientX <= rect.right &&
+          event.clientY >= rect.top &&
+          event.clientY <= rect.bottom;
+        if (inside) return;
+        dropCapture();
+        root.removeAttribute("data-calc-dragging");
+      },
+      true,
+    );
 
     // `step="any"` leaves the arrow keys stepping by a fraction of the range.
     // Keyboard users move a whole band at a time instead, with the same easing.

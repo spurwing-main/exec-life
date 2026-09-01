@@ -129,3 +129,50 @@ describe("nav auto-hide", () => {
     expect(hidden(nav)).toBe("false");
   });
 });
+
+/**
+ * Focus restoration on menu close.
+ *
+ * The menu remembers what was focused when it opened and focuses it again on
+ * close. If that was a page control — the tax calculator's premium field is
+ * the one this was reported against — closing the menu pulls the phone
+ * keyboard back up and scrolls to the calculator.
+ */
+describe("mobile menu focus restoration", () => {
+  function mountShell() {
+    document.body.innerHTML = `
+      <input id="outside" />
+      <div class="nav">
+        <div class="nav_shell">
+          <a href="#" data-nav-menu-toggle></a>
+          <div class="nav_mobile-main" data-nav-mobile="main">
+            <a href="/services" id="inside">Services</a>
+          </div>
+        </div>
+      </div>`;
+    initNav(document);
+    return document.querySelector("[data-nav-menu-toggle]");
+  }
+
+  it("does not return focus to a control outside the nav", () => {
+    const toggle = mountShell();
+    const outside = document.getElementById("outside");
+    outside.focus();
+    expect(document.activeElement).toBe(outside);
+
+    toggle.click(); // open
+    toggle.click(); // close
+
+    expect(document.activeElement).not.toBe(outside);
+  });
+
+  it("still returns focus to a control inside the nav", () => {
+    const toggle = mountShell();
+    toggle.focus();
+
+    toggle.click(); // open
+    toggle.click(); // close
+
+    expect(document.activeElement).toBe(toggle);
+  });
+});

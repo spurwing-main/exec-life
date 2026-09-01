@@ -294,7 +294,13 @@ function setupShell(root) {
       toggle.setAttribute("aria-label", open ? "Close menu" : "Open menu");
     }
     if (open) {
-      lastFocused = document.activeElement;
+      /* Only restore focus to something that was already inside the nav.
+         Opening the menu while a page control holds focus — a calculator
+         field, a form input — otherwise parks that control here, and closing
+         the menu focuses it again: on a phone that reopens the keyboard and
+         scrolls back to it, which reads as the menu doing something wrong. */
+      const active = document.activeElement;
+      lastFocused = active && root.contains(active) ? active : null;
       showView("main");
     } else
       views.forEach((v) => {
