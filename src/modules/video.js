@@ -67,7 +67,7 @@ export function youTubeVideoId(url) {
   return bare ? bare[0] : null;
 }
 
-function buildEmbedUrl(id) {
+export function buildEmbedUrl(id) {
   const params = new URLSearchParams({
     autoplay: "1",
     rel: "0",

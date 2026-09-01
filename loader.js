@@ -95,6 +95,7 @@
     faq: { label: "FAQ", default: true },
     anim: { label: "Motion / reveals", default: true },
     video: { label: "Video facade", default: true },
+    "video-lightbox": { label: "Video lightbox", default: true },
     calc: { label: "Tax calculator", default: true },
     "insights-toc": { label: "Insights TOC", default: true },
     "insurer-sort": { label: "Insurer sorting", default: true },

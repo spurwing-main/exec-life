@@ -24,6 +24,7 @@ import { initCarousels } from "./src/modules/carousel.js";
 import { initFaq } from "./src/modules/faq.js";
 import { initAnim } from "./src/modules/anim.js";
 import { initVideo } from "./src/modules/video.js";
+import { initVideoLightbox } from "./src/modules/video-lightbox.js";
 import { initCalc } from "./src/modules/calc.js";
 import { initInsightsToc } from "./src/modules/insights-toc.js";
 import { initInsurerSort } from "./src/modules/insurer-sort.js";
@@ -43,6 +44,7 @@ el.functions.initCarousels = initCarousels;
 el.functions.initFaq = initFaq;
 el.functions.initAnim = initAnim;
 el.functions.initVideo = initVideo;
+el.functions.initVideoLightbox = initVideoLightbox;
 el.functions.initCalc = initCalc;
 el.functions.initInsightsToc = initInsightsToc;
 el.functions.initInsurerSort = initInsurerSort;
@@ -61,6 +63,7 @@ const MODULES = [
   ["carousels", initCarousels],
   ["faq", initFaq],
   ["video", initVideo],
+  ["video-lightbox", initVideoLightbox],
   ["calc", initCalc],
   ["insights-toc", initInsightsToc],
   ["insurer-sort", initInsurerSort],
