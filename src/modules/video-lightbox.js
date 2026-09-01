@@ -51,9 +51,17 @@ function dialogFor(trigger) {
   return target && target.tagName === "DIALOG" ? target : null;
 }
 
-/** Where the iframe goes. Falls back to the dialog itself. */
+/**
+ * Where the iframe goes.
+ *
+ * `[data-video-frame]` is the explicit slot. Without one, the dialog's own
+ * panel is the next best home: the site's Modal component is a transparent
+ * <dialog> wrapping a visible `[data-dialog-panel]`, so mounting on the
+ * dialog itself would drop the player outside the panel, unstyled and
+ * unclipped. The dialog is the last resort.
+ */
 function mountPoint(dialog) {
-  return qs(dialog, "[data-video-frame]") || dialog;
+  return qs(dialog, "[data-video-frame]") || qs(dialog, "[data-dialog-panel]") || dialog;
 }
 
 function clear(dialog) {
@@ -77,6 +85,14 @@ function open(trigger) {
     if (url) window.open(url, "_blank", "noopener");
     return;
   }
+
+  // Bind here, not only at init. The dialog is usually a Component instance,
+  // and a Component instance root cannot carry a custom attribute in the
+  // Designer — so `dialog[data-video-dialog]` may match nothing even though
+  // the dialog is real and reachable by id. Binding the dialog we just
+  // resolved is what guarantees the close listener exists, and that listener
+  // is what stops the audio.
+  bindDialog(dialog);
 
   // Replace rather than append: a second open must not stack players.
   clear(dialog);

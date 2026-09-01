@@ -116,3 +116,43 @@ describe("video lightbox", () => {
     expect(el.dialog.showModal).toHaveBeenCalledOnce();
   });
 });
+
+/**
+ * The real dialog on this site is a Modal Component instance, and a Component
+ * instance root cannot carry a custom attribute in the Designer. So
+ * `dialog[data-video-dialog]` matches nothing, and the close listener has to
+ * be bound off the dialog the trigger actually resolves by id.
+ */
+describe("dialog without the marker attribute", () => {
+  function mountModal() {
+    document.body.innerHTML = `
+      <a href="#" data-video-lightbox="video-modal" data-video-url="https://youtu.be/eac2HS2JtFk">card</a>
+      <dialog id="video-modal" data-dialog class="modal">
+        <div data-dialog-panel class="modal_inner">
+          <button data-dialog-close type="button">Close</button>
+        </div>
+      </dialog>`;
+    const dialog = document.querySelector("dialog");
+    dialog.showModal = vi.fn(() => { dialog.open = true; });
+    dialog.close = vi.fn(() => { dialog.open = false; dialog.dispatchEvent(new Event("close")); });
+    initVideoLightbox(document);
+    return { trigger: document.querySelector("[data-video-lightbox]"), dialog };
+  }
+
+  it("still opens, and mounts the player inside the panel", () => {
+    const el = mountModal();
+    el.trigger.click();
+
+    expect(el.dialog.showModal).toHaveBeenCalledOnce();
+    expect(document.querySelector("[data-dialog-panel] > iframe")).not.toBeNull();
+  });
+
+  it("still removes the player on close, so the audio stops", () => {
+    const el = mountModal();
+    el.trigger.click();
+    expect(el.dialog.querySelector("iframe")).not.toBeNull();
+
+    el.dialog.close();
+    expect(el.dialog.querySelector("iframe")).toBeNull();
+  });
+});
