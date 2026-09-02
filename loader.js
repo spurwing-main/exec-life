@@ -101,6 +101,7 @@
     "insurer-sort": { label: "Insurer sorting", default: true },
     dialogs: { label: "Modal dialogs", default: true },
     "scroll-story": { label: "Scroll stories", default: true },
+    "first-name": { label: "First-name tokens", default: true },
   };
 
   const el = (window.el = window.el || {});
