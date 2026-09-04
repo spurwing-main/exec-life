@@ -14,8 +14,19 @@
 const FORM_SELECTOR = "#wf-form-insurers-filters";
 const LIST_SELECTOR = '[fs-list-element="list"]';
 const CONTROL_SELECTOR = 'input[name="sort"][data-field-key][data-sort-direction]';
+const MONEY_FIELDS = new Set(["amount-paid", "average-payout"]);
 
 const firstValue = (value) => (Array.isArray(value) ? value[0] : value);
+
+function moneyValue(value) {
+  const text = String(value).toLowerCase().replaceAll(",", "");
+  const number = Number(text.match(/\d+(?:\.\d+)?/)?.[0]);
+  if (!Number.isFinite(number)) return null;
+  if (/\b(?:billion|bn)\b/.test(text)) return number * 1_000_000_000;
+  if (/\b(?:million|m)\b/.test(text)) return number * 1_000_000;
+  if (/\b(?:thousand|k)\b/.test(text)) return number * 1_000;
+  return number;
+}
 
 /**
  * Compare the list items with the same rules that Finsweet uses.
@@ -46,6 +57,14 @@ export function sortListItems(items, { fieldKey, direction }) {
 
     if (firstField.type === "date" && secondField.type === "date") {
       return (first.getTime() - second.getTime()) * sign;
+    }
+
+    if (MONEY_FIELDS.has(fieldKey)) {
+      const firstMoney = moneyValue(first);
+      const secondMoney = moneyValue(second);
+      if (firstMoney === null) return 1;
+      if (secondMoney === null) return -1;
+      return (firstMoney - secondMoney) * sign;
     }
 
     return String(first).localeCompare(String(second), undefined, {

@@ -139,4 +139,16 @@ describe("sortListItems", () => {
       "AA", "A+", "A",
     ]);
   });
+
+  it("sorts formatted payout amounts by value", () => {
+    const items = ["£860 million", "£1.2 billion", "£750,000"].map((value) => ({
+      fields: { "amount-paid": { type: "text", value } },
+    }));
+
+    expect(
+      sortListItems(items, { fieldKey: "amount-paid", direction: "desc" }).map(
+        (x) => x.fields["amount-paid"].value
+      )
+    ).toEqual(["£1.2 billion", "£860 million", "£750,000"]);
+  });
 });
