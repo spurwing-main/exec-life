@@ -1,5 +1,5 @@
 /**
- * Video facade: thumbnail and custom play button, YouTube loaded only on click.
+ * Video facade: thumbnail and custom play button, the player loaded only on click.
  *
  * Same contract as the other modules: the DOM owns all visual state through
  * CSS. This only injects the iframe and flips one attribute,
@@ -7,9 +7,10 @@
  * drives the play button's fade-out and the iframe's positioning. No inline
  * styles here.
  *
- * WHY A FACADE. A YouTube iframe embedded on load costs 600kb+ of JS and
- * several third-party requests before anyone asks to watch anything. The
- * thumbnail is a plain <img>, so the section costs one image until the click.
+ * WHY A FACADE. A YouTube or Vimeo iframe embedded on load costs hundreds of
+ * kilobytes of JS and several third-party requests before anyone asks to watch
+ * anything. The thumbnail is a plain <img>, so the section costs one image
+ * until the click.
  *
  * Markup contract. Binds on ATTRIBUTES only, `[data-video]` and the
  * `data-video-*` values, never on a class. The one shape it drives is the
@@ -33,58 +34,114 @@
  *     instead of a black hole if the iframe fails.
  *   - Idempotent: a second click during playback is a no-op, so the iframe is
  *     never injected twice and playback never restarts.
- *   - Uses `youtube-nocookie.com`, so nothing is written until playback.
+ *   - Privacy-first hosts: `youtube-nocookie.com` for YouTube and `dnt=1` for
+ *     Vimeo, so neither writes anything until playback.
  *
  * THE URL MAY NOT CONTAIN A VIDEO. `data-video-url` is authored in the
  * Designer, so it can legitimately hold a channel link, a /redirect?… bounce,
- * or an empty string. `youTubeVideoId` returns null for those and the URL
- * opens in a new tab rather than injecting a broken player. That is a
- * deliberate fallback, not a silent failure, and it warns: a marketing link in
- * a video slot is nearly always a content mistake someone should see.
+ * or an empty string. `videoSource` returns null for those and the URL opens in
+ * a new tab rather than injecting a broken player. That is a deliberate
+ * fallback, not a silent failure, and it warns: a marketing link in a video
+ * slot is nearly always a content mistake someone should see.
  */
 
 import { qsa, qs, closestWithin } from "../utils/dom.js";
 
-/** Optional site-wide default, used when an instance has no usable URL. */
-export const FALLBACK_VIDEO_ID = "";
-
 /**
- * Pull an 11-character YouTube id out of any form an author might paste.
+ * Work out which provider a pasted URL points at, and pull the id out.
  *
- * Covers watch?v=, youtu.be/, /embed/, /v/, /shorts/ and a bare id. It
- * deliberately does not try to be clever about /redirect?…&q=… or /@channel
- * URLs: those contain no video, and a guess would produce a player for the
- * wrong thing.
+ * Returns `{ provider, id, hash }` or null. `hash` is Vimeo's privacy token
+ * and is null everywhere else.
+ *
+ * Deliberately not clever about /redirect?…&q=… or /@channel URLs: those
+ * contain no video, and a guess would produce a player for the wrong thing.
  */
-export function youTubeVideoId(url) {
+export function videoSource(url) {
   if (!url) return null;
   const value = String(url).trim();
+
+  // Vimeo first. A Vimeo id is a bare run of digits, so testing YouTube's
+  // 11-character alphanumeric pattern first would never misfire — but a Vimeo
+  // URL containing "/v/" would, and that is a real Vimeo path shape.
+  if (/vimeo\.com/i.test(value)) {
+    // The id is the last all-digit path segment: this covers vimeo.com/ID,
+    // /channels/name/ID, /groups/name/videos/ID and player.vimeo.com/video/ID.
+    const id = (value.match(/vimeo\.com\/(?:.*\/)?(\d+)/i) || [])[1];
+    if (!id) return null;
+
+    // UNLISTED VIDEOS NEED THE PRIVACY HASH. Vimeo writes those as
+    // vimeo.com/ID/HASH, and the embed is refused with 403 unless the hash
+    // comes through as ?h=. It also arrives as an explicit ?h= on some
+    // share URLs, so accept both spellings.
+    const fromPath = (value.match(new RegExp("vimeo\\.com\\/(?:.*\\/)?" + id + "\\/([A-Za-z0-9]+)", "i")) || [])[1];
+    const fromQuery = (value.match(/[?&]h=([A-Za-z0-9]+)/i) || [])[1];
+    return { provider: "vimeo", id, hash: fromPath || fromQuery || null };
+  }
+
+  // YouTube ids are exactly 11 characters of [A-Za-z0-9_-].
   const fromUrl = value.match(
     /(?:youtu\.be\/|\/embed\/|\/v\/|\/shorts\/|[?&]v=)([A-Za-z0-9_-]{11})/
   );
-  if (fromUrl) return fromUrl[1];
+  if (fromUrl) return { provider: "youtube", id: fromUrl[1], hash: null };
+
   const bare = value.match(/^[A-Za-z0-9_-]{11}$/);
-  return bare ? bare[0] : null;
+  return bare ? { provider: "youtube", id: bare[0], hash: null } : null;
 }
 
-export function buildEmbedUrl(id) {
+/**
+ * Kept for callers that only ever handled YouTube.
+ *
+ * @deprecated Use `videoSource`. This returns null for a Vimeo URL, which is
+ * correct for its name but not what a caller handling both wants.
+ */
+export function youTubeVideoId(url) {
+  const source = videoSource(url);
+  return source && source.provider === "youtube" ? source.id : null;
+}
+
+/**
+ * The embed URL for a source from `videoSource`.
+ *
+ * Both hosts are the privacy-preserving variant: youtube-nocookie writes no
+ * cookie until playback, and Vimeo's dnt=1 suppresses its tracking. The facade
+ * exists to avoid third-party weight before a click; loading a tracking player
+ * on that click would give most of it back.
+ */
+export function buildEmbedUrl(source) {
+  // A bare string is still accepted, and still means YouTube, so the old
+  // two-argument call shape in any untouched caller keeps working.
+  const value = typeof source === "string" ? { provider: "youtube", id: source, hash: null } : source;
+  if (!value || !value.id) return null;
+
+  if (value.provider === "vimeo") {
+    const params = new URLSearchParams({
+      autoplay: "1",
+      title: "0",
+      byline: "0",
+      portrait: "0",
+      dnt: "1",
+    });
+    if (value.hash) params.set("h", value.hash);
+    return `https://player.vimeo.com/video/${value.id}?${params}`;
+  }
+
   const params = new URLSearchParams({
     autoplay: "1",
     rel: "0",
     modestbranding: "1",
     playsinline: "1",
   });
-  return `https://www.youtube-nocookie.com/embed/${id}?${params}`;
+  return `https://www.youtube-nocookie.com/embed/${value.id}?${params}`;
 }
 
 function play(root) {
   if (root.getAttribute("data-video-state") === "playing") return;
 
   const url = root.getAttribute("data-video-url") || "";
-  const id = youTubeVideoId(url) || FALLBACK_VIDEO_ID;
+  const source = videoSource(url);
 
-  if (!id) {
-    console.warn("[el] video: no YouTube video id in data-video-url, cannot embed a player", url);
+  if (!source) {
+    console.warn("[el] video: no YouTube or Vimeo video in data-video-url, cannot embed a player", url);
     if (url) window.open(url, "_blank", "noopener");
     return;
   }
@@ -93,7 +150,7 @@ function play(root) {
   // structurally, so this class exists only to help someone debug.
   const frame = document.createElement("iframe");
   frame.className = "video-facade_iframe";
-  frame.src = buildEmbedUrl(id);
+  frame.src = buildEmbedUrl(source);
   frame.title = root.getAttribute("data-video-title") || "Video";
   frame.setAttribute(
     "allow",

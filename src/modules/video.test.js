@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from "vitest";
-import { initVideo, youTubeVideoId } from "./video.js";
+import { initVideo, youTubeVideoId, videoSource, buildEmbedUrl } from "./video.js";
 
 const REAL = "https://www.youtube.com/watch?v=dQw4w9WgXcQ";
 
@@ -146,5 +146,65 @@ describe("initVideo", () => {
     button.removeAttribute("aria-label");
     initVideo();
     expect(button.getAttribute("aria-label")).toBe("Play video");
+  });
+});
+
+// Vimeo support. The provider is chosen from the URL, and the two hosts have
+// different privacy switches: youtube-nocookie for one, dnt=1 for the other.
+describe("videoSource — Vimeo", () => {
+  it("reads the id from every Vimeo URL shape", () => {
+    expect(videoSource("https://vimeo.com/123456789")).toEqual({
+      provider: "vimeo", id: "123456789", hash: null,
+    });
+    expect(videoSource("https://player.vimeo.com/video/123456789").id).toBe("123456789");
+    expect(videoSource("https://vimeo.com/channels/staffpicks/123456789").id).toBe("123456789");
+    expect(videoSource("https://vimeo.com/groups/shorts/videos/123456789").id).toBe("123456789");
+  });
+
+  // The one that breaks silently in production: an unlisted video embeds as
+  // 403 without its privacy hash.
+  it("keeps the privacy hash for an unlisted video", () => {
+    expect(videoSource("https://vimeo.com/123456789/abc123def")).toEqual({
+      provider: "vimeo", id: "123456789", hash: "abc123def",
+    });
+    expect(videoSource("https://vimeo.com/123456789?h=abc123def").hash).toBe("abc123def");
+  });
+
+  it("puts the hash in the embed URL as h=", () => {
+    const url = buildEmbedUrl(videoSource("https://vimeo.com/123456789/abc123def"));
+    expect(url).toContain("player.vimeo.com/video/123456789");
+    expect(url).toContain("h=abc123def");
+    expect(url).toContain("dnt=1");
+  });
+
+  it("omits h= when there is no hash", () => {
+    expect(buildEmbedUrl(videoSource("https://vimeo.com/123456789"))).not.toContain("h=");
+  });
+
+  it("returns null for a Vimeo URL with no video in it", () => {
+    expect(videoSource("https://vimeo.com/executivelife")).toBeNull();
+  });
+});
+
+describe("videoSource — YouTube still works", () => {
+  it("tags YouTube URLs with the right provider", () => {
+    expect(videoSource("https://www.youtube.com/watch?v=dQw4w9WgXcQ")).toEqual({
+      provider: "youtube", id: "dQw4w9WgXcQ", hash: null,
+    });
+  });
+
+  it("builds a nocookie embed", () => {
+    const url = buildEmbedUrl(videoSource("https://youtu.be/dQw4w9WgXcQ"));
+    expect(url).toContain("youtube-nocookie.com/embed/dQw4w9WgXcQ");
+    expect(url).toContain("autoplay=1");
+  });
+
+  it("still accepts a bare id string, as the old callers passed", () => {
+    expect(buildEmbedUrl("dQw4w9WgXcQ")).toContain("youtube-nocookie.com/embed/dQw4w9WgXcQ");
+  });
+
+  it("youTubeVideoId stays YouTube-only and ignores Vimeo", () => {
+    expect(youTubeVideoId("https://www.youtube.com/watch?v=dQw4w9WgXcQ")).toBe("dQw4w9WgXcQ");
+    expect(youTubeVideoId("https://vimeo.com/123456789")).toBeNull();
   });
 });

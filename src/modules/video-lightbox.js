@@ -16,7 +16,7 @@
  * Markup contract, authored in the Designer:
  *
  *   <a data-video-lightbox="video-modal"          <!-- target dialog's id -->
- *      data-video-url="https://youtu.be/XXXXXXXXXXX"
+ *      data-video-url="https://youtu.be/XXXXXXXXXXX"   <!-- or a Vimeo URL -->
  *      data-video-title="Relevant Life explained">
  *     … thumbnail, play button, duration …
  *   </a>
@@ -40,7 +40,7 @@
  */
 
 import { qsa, qs } from "../utils/dom.js";
-import { youTubeVideoId, buildEmbedUrl } from "./video.js";
+import { videoSource, buildEmbedUrl } from "./video.js";
 
 /** The dialog a trigger points at, or the only video dialog on the page. */
 function dialogFor(trigger) {
@@ -98,9 +98,9 @@ function open(trigger) {
     return;
   }
 
-  const id = youTubeVideoId(url);
-  if (!id) {
-    console.warn("[el] video-lightbox: no YouTube video id in data-video-url", url);
+  const source = videoSource(url);
+  if (!source) {
+    console.warn("[el] video-lightbox: no YouTube or Vimeo video in data-video-url", url);
     if (url) window.open(url, "_blank", "noopener");
     return;
   }
@@ -118,7 +118,7 @@ function open(trigger) {
 
   const frame = document.createElement("iframe");
   frame.className = "video-lightbox_iframe";
-  frame.src = buildEmbedUrl(id);
+  frame.src = buildEmbedUrl(source);
   frame.title = trigger.getAttribute("data-video-title") || "Video";
   frame.setAttribute(
     "allow",
