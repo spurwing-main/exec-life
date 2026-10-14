@@ -1,102 +1,128 @@
-/**
- * Loader origin guards.
- *
- * `?local=<url>` and `?env=local` name an origin, and the loader injects what
- * they name as a module script. So it runs first-party. A crafted link on the
- * production domain used to run another site's JavaScript on ours.
- *
- * Two guards protect it, and each one covers a hole the other leaves:
- *   1. Read both parameters on a dev host only. A query parameter can never be
- *      the gate, because an attacker writes the whole query string.
- *   2. Allow a loopback or a LocalCan host only, so a dev host cannot become a
- *      proxy for any origin either.
- *
- * A unit test cannot set `location.hostname`, so each case builds its own JSDOM
- * with the host in the URL. The loader is an IIFE that reads `location` and
- * `document` when it runs, which is why it has to run inside that window.
- */
-import { describe, it, expect } from "vitest";
-import { readFileSync, existsSync } from "node:fs";
-import { resolve } from "node:path";
+import { afterEach, describe, it, expect, vi } from "vitest";
+import { readFileSync } from "node:fs";
 import { JSDOM } from "jsdom";
 
-// The jsdom environment gives `import.meta.url` an http scheme, so resolve from
-// the project root instead. Vitest runs with the root as the working directory.
-const LOADER_PATH = resolve(process.cwd(), "loader.js");
-if (!existsSync(LOADER_PATH)) {
-  throw new Error(`Cannot find loader.js at ${LOADER_PATH}. Run the tests from the project root.`);
-}
-const LOADER = readFileSync(LOADER_PATH, "utf8");
-const FOREIGN = "https://evil.example";
+const LOADER = readFileSync("loader.js", "utf8");
+const loaderSource = "https://cdn.jsdelivr.net/gh/spurwing-main/exec-life@1234567890abcdef/loader.js";
+const cdnSource = loaderSource.replace("/loader.js", "/dist/bundle.js");
+const windows = [];
 
-// Run the loader in a window at `url` and give back what it resolved.
-function boot(url) {
+afterEach(() => { windows.splice(0).forEach((window) => window.close()); });
+
+async function boot(url, { stored, localUp = true, defaultsBase } = {}) {
   const dom = new JSDOM("<!doctype html><html><head></head><body></body></html>", {
-    url,
-    runScripts: "outside-only",
+    url, runScripts: "outside-only",
   });
-  const warnings = [];
-  dom.window.console.warn = (...a) => warnings.push(a.join(" "));
-  // The loader probes LocalCan with fetch. Never let a test reach the network.
-  dom.window.fetch = () => Promise.reject(new Error("blocked in test"));
-  dom.window.eval(LOADER);
-  return { ...dom.window.el.boot, warnings };
+  const window = dom.window;
+  windows.push(window);
+  window.console = { log: vi.fn(), warn: vi.fn(), error: vi.fn() };
+  const fetchMock = vi.fn().mockResolvedValue({ ok: localUp });
+  window.fetch = fetchMock;
+  Object.defineProperty(window.document, "currentScript", { value: { src: loaderSource } });
+  if (stored) window.sessionStorage.setItem("el_env", stored);
+  const source = defaultsBase ? LOADER.replace('localBase: "http://localhost:5500"', `localBase: ${JSON.stringify(defaultsBase)}`) : LOADER;
+  window.eval(source);
+  for (let step = 0; step < 8; step += 1) await Promise.resolve();
+  return {
+    window, fetchMock, config: window.el.boot,
+    scripts: () => [...window.document.querySelectorAll('script[type="module"]')],
+  };
 }
 
-describe("loader origin guards", () => {
-  describe("a dev host", () => {
-    it("refuses a foreign ?local= and falls back to the default base", () => {
-      const b = boot(`https://staging.webflow.io/p?env=local&local=${FOREIGN}`);
-      expect(b.localBase).not.toContain("evil.example");
-      expect(b.localSrc).not.toContain("evil.example");
-      expect(b.localBase).toBe("http://localhost:5500");
-      expect(b.warnings.join(" ")).toContain("?local=");
-    });
-
-    it("still refuses it when ?dev=0 is present", () => {
-      // ?dev=0 is the flag every QA run appends. It must not act as a gate,
-      // in either direction.
-      const b = boot(`https://staging.webflow.io/p?dev=0&env=local&local=${FOREIGN}`);
-      expect(b.localBase).not.toContain("evil.example");
-    });
-
-    it("keeps a loopback base, so local development is unchanged", () => {
-      const b = boot("https://staging.webflow.io/p?env=local&local=http://localhost:5500");
-      expect(b.localBase).toBe("http://localhost:5500");
-      expect(b.env).toBe("local");
-    });
-
-    it("keeps a LocalCan base", () => {
-      const b = boot("https://staging.webflow.io/p?env=local&local=https://x.localcan.dev");
-      expect(b.localBase).toBe("https://x.localcan.dev");
-      expect(b.env).toBe("local");
-    });
+describe("loader source selection", () => {
+  it.each(["example.com", "staging.webflow.io"])("ignores every commit query on %s", async (host) => {
+    for (const ref of ["abcdef1234567", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "../../other/repo@main", "main/../../evil", "refs/heads/fork"]) {
+      const result = await boot(`https://${host}/?dev=1&commit=${encodeURIComponent(ref)}`);
+      expect(result.config.commit).toBe("1234567890abcdef");
+      expect(result.scripts().map((script) => script.src)).toEqual([cdnSource]);
+      expect(result.fetchMock).not.toHaveBeenCalled();
+    }
   });
 
-  describe("a production host", () => {
-    it("forces env to live and refuses ?local=", () => {
-      const b = boot(`https://example.com/p?env=local&local=${FOREIGN}`);
-      expect(b.env).toBe("live");
-      expect(b.localBase).not.toContain("evil.example");
-      expect(b.warnings.join(" ")).toContain("dev host");
-    });
+  it.each(["", "?env=auto", "?env=live", "?dev=1", "?mode=dev&env=auto"])(
+    "never probes automatically on staging: %s", async (query) => {
+      const result = await boot(`https://staging.webflow.io/${query}`);
+      expect(result.fetchMock).not.toHaveBeenCalled();
+      expect(result.scripts().map((script) => script.src)).toEqual([cdnSource]);
+    }
+  );
 
-    it("still refuses it with ?dev=1, because a parameter cannot open this", () => {
-      const b = boot(`https://example.com/p?dev=1&env=local&local=${FOREIGN}`);
-      expect(b.env).toBe("live");
-      expect(b.localBase).not.toContain("evil.example");
-    });
+  it.each(["?dev=1&env=local", "?mode=dev&env=local", "?env=local&local=http://localhost:5500"])(
+    "never probes on production despite URL and session Local: %s", async (query) => {
+      const result = await boot(`https://example.com/${query}`, { stored: "local" });
+      expect(result.fetchMock).not.toHaveBeenCalled();
+      expect(result.config.env).toBe("live");
+      expect(result.scripts().map((script) => script.src)).toEqual([cdnSource]);
+    }
+  );
 
-    it("keeps ?commit= working, because it names a commit of this repository", () => {
-      const b = boot("https://example.com/p?commit=abc123");
-      expect(b.commit).toBe("abc123");
-      expect(b.cdnSrc).toContain("abc123");
-      expect(b.env).toBe("live");
-    });
+  it.each(["?env=local", "?dev=0&env=local", ""])("probes after explicit URL/session Local: %s", async (query) => {
+    const result = await boot(`https://staging.webflow.io/${query}`, { stored: "local" });
+    expect(result.fetchMock).toHaveBeenCalledOnce();
+    expect(result.scripts()[0].src).toBe("http://localhost:5500/bundle.js");
+  });
 
-    it("never puts a foreign origin in the script it chooses", () => {
-      const b = boot(`https://example.com/p?env=local&local=${FOREIGN}`);
-      expect(JSON.stringify(b)).not.toContain("evil.example");
-    });
+  it.each(["https://evil.example", "http://localhost.attacker.test"])("rejects an outside local host: %s", async (base) => {
+    const result = await boot(`https://staging.webflow.io/?env=local&local=${encodeURIComponent(base)}`);
+    expect(result.config.localBase).toBe("http://localhost:5500");
+    expect(result.scripts()[0].src).toBe("http://localhost:5500/bundle.js");
+  });
+
+  it.each(["http://localhost:5501", "http://127.0.0.1:5501", "http://[::1]:5501"])(
+    "preserves the existing allowed local base: %s", async (base) => {
+      const result = await boot(`https://staging.webflow.io/?env=local&local=${encodeURIComponent(base)}`);
+      expect(result.scripts()[0].src).toBe(`${base}/bundle.js`);
+    }
+  );
+
+  it.each(["https://x.localcan.dev", "javascript://localhost/evil", "ftp://localhost", "http://user:pass@localhost:5500", "http://localhost:5500/?query=1", "http://localhost:5500/#fragment", "http://localhost:5500?", "http://localhost:5500#", "//localhost:5500", "/local"])(
+    "does not trust provider wildcards or invalid bases: %s", async (base) => {
+      const result = await boot(`https://staging.webflow.io/?env=local&local=${encodeURIComponent(base)}`);
+      expect(result.scripts()[0].src).toBe("http://localhost:5500/bundle.js");
+    }
+  );
+
+  it("keeps an explicitly configured HTTPS tunnel", async () => {
+    const base = "https://trusted.localcan.dev";
+    const result = await boot(`https://staging.webflow.io/?env=local&local=${base}/dev`, { defaultsBase: base });
+    expect(result.fetchMock).toHaveBeenCalledWith(`${base}/dev/bundle.js`, expect.any(Object));
+    expect(result.scripts()[0].src).toBe(`${base}/dev/bundle.js`);
+  });
+
+  it.each(["https://other.localcan.dev", "https://trusted.localcan.dev.attacker.test", "https://trusted.localcan.dev:8443"])(
+    "requires the exact configured tunnel origin: %s", async (base) => {
+      const result = await boot(`https://staging.webflow.io/?env=local&local=${encodeURIComponent(base)}`, { defaultsBase: "https://trusted.localcan.dev" });
+      expect(result.scripts()[0].src).toBe("https://trusted.localcan.dev/bundle.js");
+    }
+  );
+
+  it.each(["javascript://localhost/evil", "https://trusted.localcan.dev?", "https://trusted.localcan.dev#"])("uses CDN when the configured base is invalid: %s", async (defaultsBase) => {
+    const result = await boot("https://staging.webflow.io/?env=local", { defaultsBase });
+    expect(result.fetchMock).not.toHaveBeenCalled();
+    expect(result.scripts()[0].src).toBe(cdnSource);
+  });
+
+  it("falls back to the pin when the explicit local probe fails", async () => {
+    const result = await boot("https://staging.webflow.io/?env=local", { localUp: false });
+    expect(result.scripts().map((script) => script.src)).toEqual([cdnSource]);
+    expect(result.window.document.querySelector("[data-el-panel]").textContent).toContain("LocalCan down");
+  });
+
+  it("tries the CDN once after a local module error and reveals content", async () => {
+    const result = await boot("https://staging.webflow.io/?env=local");
+    result.scripts()[0].onerror();
+    expect(result.scripts().map((script) => script.src)).toEqual(["http://localhost:5500/bundle.js", cdnSource]);
+    expect(result.scripts()[1].onerror).toBeNull();
+    expect(result.window.document.documentElement.classList.contains("el-ready")).toBe(true);
+  });
+
+  it("keeps feature flags and the panel available without probing", async () => {
+    const result = await boot("https://staging.webflow.io/?dev=1&off=anim,faq");
+    expect(result.fetchMock).not.toHaveBeenCalled();
+    expect(result.window.el.flags.enabled("anim")).toBe(false);
+    expect(result.window.el.flags.enabled("faq")).toBe(false);
+    expect(result.window.el.flags.enabled("nav")).toBe(true);
+    expect(result.window.document.querySelector("[data-el-panel]")).not.toBeNull();
+    expect(result.window.document.documentElement.getAttribute("data-el-on").split(" ")).not.toContain("anim");
   });
 });

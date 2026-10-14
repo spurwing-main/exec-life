@@ -1,39 +1,14 @@
 // Exec-Life loader.
 //
-// This is the only file that Webflow references. Add one tag in Project
-// Settings, in Custom Code, in the Head section or the Footer section. Pin
-// the tag to a commit SHA (Secure Hash Algorithm value):
-//
+// This is the only file Webflow references. Put its trusted commit-pinned tag
+// once in the site-wide Head, without async/defer, before gated content can paint:
 //   <script src="https://cdn.jsdelivr.net/gh/spurwing-main/exec-life@<SHA>/loader.js"></script>
-//
-// Run `npm run tag` to show the exact tag for the current commit.
-//
-// Why a SHA and not @main:
-//   A commit-pinned URL is immutable on jsDelivr, which caches it forever.
-//   You never purge the cache and the content never goes stale. Release by
-//   changing the SHA in the Webflow tag and publishing. Roll back by changing
-//   it back. The pin lives in Webflow, not in this file: Webflow serves fresh
-//   HTML on each request, jsDelivr caches this file.
-//
-// The loader reads its own commit from the <script src> attribute and loads
-// `dist/bundle.js` from that same commit, so the two never drift apart.
-//
-// Resolution order. The loader checks these in order and uses the first match:
-//   1. URL params      ?env=local | ?env=live | ?commit=<sha> | ?local=<url>
-//                      ?dev (with no value) or ?dev=1 turns dev mode on and
-//                      shows the panel. ?dev=0 forces dev mode off.
-//                      ?on=anim or ?off=anim,faq sets feature flags for this
-//                      pageview only.
-//   2. Persisted dev   sessionStorage key el_env, and el_flags for feature
-//                      toggles.
-//   3. Auto-probe      On a dev host (localhost or *.webflow.io), or when dev
-//                      mode is on: the loader checks if LocalCan is up. If
-//                      LocalCan is up, the loader uses it. If not, the loader
-//                      uses the CDN.
-//   4. Default         Live. The loader uses the bundle from its own commit.
-//
-// A visitor on the production domain never triggers the auto-probe. The
-// loader goes straight to the CDN.
+// `npm run tag` prints the tag. The bundle uses that tag's revision, or DEFAULTS
+// when the tag cannot be parsed. URL ?commit= values never select release code.
+// Auto and Live use the CDN without local-network requests. Local requires an
+// explicit URL or panel/session choice on a development host. Local URLs must
+// use loopback or the exact configured tunnel origin. Production always uses CDN.
+// Feature flags remain URL → tab session → registry default.
 
 (() => {
   "use strict";
@@ -64,8 +39,8 @@
   //                    "Keep dev mode on this browser" checkbox did nothing.
   //   el_local       : read at localBase, never written.
   //   el_commit      : read at commit, never written.
-  // `?local=` and `?commit=` remain as per-pageview URL overrides, which is
-  // the only way the code ever used them.
+  // `?local=` remains a checked development override. `?commit=` is ignored;
+  // Reset still removes it and the retired persisted key.
   const KEYS = {
     env: "el_env",
     flags: "el_flags",
@@ -148,7 +123,7 @@
   };
 
   // Presence-style flag. `param()` returns null for an empty value, which is
-  // correct for ?env=, ?commit= and ?local=, since each needs a real value.
+  // correct for ?env= and ?local=, since each needs a real value.
   // That same behaviour made a bare `?dev` do nothing: empty read as null and
   // dev mode never switched on. This treats a valueless parameter as ON,
   // which is what most people type.
@@ -191,46 +166,34 @@
 
   const owner = self?.owner || DEFAULTS.owner;
   const project = self?.project || DEFAULTS.project;
-  const commit = param("commit") || self?.ref || DEFAULTS.commit;
+  const commit = self?.ref || DEFAULTS.commit;
 
-  // SECURITY. `?local=` and `?env=local` name a foreign origin, and this loader
-  // injects whatever they name as a module script. So they run first-party. Both
-  // are for a developer on a staging host, and a visitor must never reach them.
-  //
-  // Two guards, because either one alone is not enough:
-  //   1. Accept them only on a dev host. `?dev=1` cannot open this: an attacker
-  //      controls the whole query string, so a query parameter can never be the
-  //      gate. Only the hostname can.
-  //   2. Accept only a loopback or a LocalCan tunnel host, so a dev host cannot
-  //      be turned into a proxy for any origin either.
-  //
-  // `?commit=` needs no guard. It can only name a commit of this repository.
-  const localAllowed = (url) => {
+  // Local code sources require a development host plus a loopback or configured origin.
+  const parseBase = (value) => {
+    if (typeof value !== "string" || /[?#]/.test(value)) return null;
     try {
-      const u = new URL(url, location.href);
-      return (
-        u.hostname === "localhost" ||
-        u.hostname === "127.0.0.1" ||
-        u.hostname === "[::1]" ||
-        /\.localcan\.dev$/.test(u.hostname)
-      );
+      const url = new URL(value);
+      if (!/^https?:$/.test(url.protocol) || url.username || url.password || url.search || url.hash) return null;
+      return url;
     } catch {
-      return false;
+      return null;
     }
   };
+  const defaultBase = parseBase(DEFAULTS.localBase);
   const localParam = isDevHost ? param("local") : null;
+  const requestedBase = parseBase(localParam);
+  const allowedBase = requestedBase && (
+    ["localhost", "127.0.0.1", "[::1]"].includes(requestedBase.hostname) ||
+    requestedBase.origin === defaultBase?.origin
+  ) ? requestedBase : null;
   if (param("local") && !isDevHost) {
     console.warn("[el] ?local= ignored: it works on a dev host only.");
-  } else if (localParam && !localAllowed(localParam)) {
-    console.warn("[el] ?local= ignored: it allows a loopback or LocalCan host only.");
+  } else if (localParam && !allowedBase) {
+    console.warn("[el] ?local= ignored: use a loopback or explicitly configured origin.");
   }
-  const localBase = ((localAllowed(localParam) ? localParam : null) || DEFAULTS.localBase).replace(
-    /\/$/,
-    ""
-  );
+  const localBase = (allowedBase || defaultBase)?.href.replace(/\/$/, "") || null;
 
-  // The env value is "local", "live", or "auto". "auto" means the loader
-  // probes LocalCan and picks whichever source is up.
+  // Auto and Live select the CDN. Only an explicit Local choice probes locally.
   //
   // Read ?env= on a dev host only, for the same reason as ?local= above. On a
   // production host the value is always "live".
@@ -243,7 +206,7 @@
   // controls which bundle loads, the panel shows, so you can see and reset it.
   // Use the checked values, not the raw parameters. An ignored ?local= must not
   // open the dev panel for a visitor.
-  const hasOverride = !!(envOverride || param("commit") || localParam);
+  const hasOverride = !!(envOverride || localParam);
 
   // -- resolve flags ---------------------------------------------------------
   // Precedence per feature: ?on= or ?off= URL parameter, then the persisted
@@ -301,7 +264,7 @@
   );
 
   const cdnSrc = `https://cdn.jsdelivr.net/gh/${owner}/${project}@${commit}/dist/bundle.js`;
-  const localSrc = `${localBase}/bundle.js`;
+  const localSrc = localBase ? `${localBase}/bundle.js` : null;
 
   el.boot = { owner, project, commit, env, localBase, cdnSrc, localSrc, devMode };
 
@@ -327,23 +290,17 @@
     if (showPanel) mountPanel(source);
   });
 
-  // Choose the source. Probe LocalCan when the check needs it.
+  // Only an explicit Local choice permits a local-network request.
   async function probe() {
-    if (env === "live") return { url: cdnSrc, kind: "live", localUp: null };
-    if (env === "local") {
-      const up = await isLocalUp();
-      if (up) return { url: localSrc, kind: "local", localUp: true };
-      console.warn("[el] LocalCan not reachable — falling back to CDN:", localSrc);
-      return { url: cdnSrc, kind: "live", localUp: false };
-    }
-    // auto
+    if (env !== "local") return { url: cdnSrc, kind: "live", localUp: null };
     const up = await isLocalUp();
-    return up
-      ? { url: localSrc, kind: "local", localUp: true }
-      : { url: cdnSrc, kind: "live", localUp: false };
+    if (up) return { url: localSrc, kind: "local", localUp: true };
+    console.warn("[el] LocalCan not reachable — falling back to CDN:", localSrc);
+    return { url: cdnSrc, kind: "live", localUp: false };
   }
 
   function isLocalUp() {
+    if (!localSrc) return Promise.resolve(false);
     return new Promise((resolve) => {
       const ctrl = new AbortController();
       const t = setTimeout(() => {
