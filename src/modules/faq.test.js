@@ -110,6 +110,82 @@ function createGsapMock() {
   return { mock, timelines };
 }
 
+describe("interactive accordion content", () => {
+  beforeEach(() => {
+    delete window.gsap;
+    mockMatchMedia();
+  });
+
+  it("makes closed panels inert and hidden from assistive technology, returning focus on close", () => {
+    const { toggles, panels } = mount();
+    panels[1].firstElementChild.innerHTML = '<a href="#source">Table source</a>';
+    const cleanup = initFaq();
+    expect(panels[0].hasAttribute("inert")).toBe(false);
+    expect(panels[0].getAttribute("aria-hidden")).toBe("false");
+    expect(panels[1].hasAttribute("inert")).toBe(true);
+    expect(panels[1].getAttribute("aria-hidden")).toBe("true");
+    toggles[1].click();
+    expect(panels[1].hasAttribute("inert")).toBe(false);
+    expect(panels[1].getAttribute("aria-hidden")).toBe("false");
+    panels[1].querySelector("a").focus();
+    toggles[1].click();
+    expect(document.activeElement).toBe(toggles[1]);
+    expect(panels[1].hasAttribute("inert")).toBe(true);
+    cleanup();
+    expect(panels[1].hasAttribute("inert")).toBe(false);
+    expect(panels[1].hasAttribute("aria-hidden")).toBe(false);
+  });
+
+  it("restores authored accessibility attributes on cleanup", () => {
+    const { panels } = mount();
+    panels[0].setAttribute("inert", "");
+    panels[0].setAttribute("aria-hidden", "true");
+    const cleanup = initFaq();
+    cleanup();
+    expect(panels[0].getAttribute("inert")).toBe("");
+    expect(panels[0].getAttribute("aria-hidden")).toBe("true");
+  });
+
+  it("exposes all panels when the accordion breakpoint is inactive", () => {
+    const { panels } = mount();
+    document.querySelector("[data-faq]").setAttribute("data-faq-breakpoints", "dsk");
+    const media = mockMatchMedia([BREAKPOINT_QUERIES.dsk]);
+    const cleanup = initFaq();
+    expect(panels[1].hasAttribute("inert")).toBe(true);
+    media.set("dsk", false);
+    panels.forEach(panel => {
+      expect(panel.hasAttribute("inert")).toBe(false);
+      expect(panel.getAttribute("aria-hidden")).toBe("false");
+    });
+    cleanup();
+  });
+
+  it("keeps default-closed article instances independent of each other and the page FAQ", () => {
+    const { items: pageItems } = mount();
+    document.body.insertAdjacentHTML("beforeend", [1, 2].map(i => `
+      <div data-faq data-faq-open="none" data-article-accordion>
+        <div data-faq-item data-open="false">
+          <button type="button" data-faq-toggle>Article accordion ${i}</button>
+          <div data-faq-panel><div><a href="#note-${i}">Footnote ${i}</a></div></div>
+        </div>
+      </div>`).join(""));
+    const cleanup = initFaq();
+    const articles = [...document.querySelectorAll("[data-article-accordion]")];
+    expect(openStates(pageItems)).toEqual(["true", "false", "false", "false"]);
+    articles.forEach(root => expect(root.querySelector("[data-open]").getAttribute("data-open")).toBe("false"));
+    articles.forEach(root => root.querySelector("button").click());
+    articles.forEach(root => expect(root.querySelector("button").getAttribute("aria-expanded")).toBe("true"));
+    expect(pageItems[0].getAttribute("data-open")).toBe("true");
+    const panels = [...document.querySelectorAll("[data-faq-panel]")];
+    expect(new Set(panels.map(p => p.id)).size).toBe(panels.length);
+    panels.forEach(panel => {
+      const toggle = document.getElementById(panel.getAttribute("aria-labelledby"));
+      expect(toggle.getAttribute("aria-controls")).toBe(panel.id);
+    });
+    cleanup();
+  });
+});
+
 describe("initFaq", () => {
   beforeEach(() => {
     document.body.innerHTML = "";

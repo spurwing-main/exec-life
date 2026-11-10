@@ -1,16 +1,14 @@
-# This repo is PUBLIC — the live Webflow tag loads loader.js from jsDelivr by
-# commit SHA, so it can't be private. It holds the JS that ships to the browser
-# and nothing else.
-#
-# Everything else goes in /local/. One rule, so there is nothing to decide and
-# nothing to add here later. See local/README.md.
+# Browser code and code setup only. Records: ../execlife-private/; raw work: ../execlife-local/.
+# Guard against tools accidentally recreating old working folders here.
 /local/
+/private/
 /outputs/
-# Delivery state — client name, site ids, open blockers. Never in a public repo.
+/.tmp/
 /.delivery/
 
-# Machine junk
 node_modules/
 .pnpm-store/
-.env.local
+.env
+.env.*
+!.env.example
 .DS_Store

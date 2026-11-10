@@ -3,15 +3,15 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { initInsurerSort, sortListItems } from "./insurer-sort.js";
 
 const CONTROL_CONFIGS = [
-  { id: "life-payout-rate-desc", fieldKey: "life-payout-rate", direction: "desc" },
-  { id: "life-payout-rate-asc", fieldKey: "life-payout-rate", direction: "asc" },
-  { id: "overall-payout-rate-desc", fieldKey: "overall-payout-rate", direction: "desc" },
-  { id: "overall-payout-rate-asc", fieldKey: "overall-payout-rate", direction: "asc" },
-  { id: "financial-rating-desc", fieldKey: "financial-rating", direction: "desc" },
-  { id: "financial-rating-asc", fieldKey: "financial-rating", direction: "asc" },
+  { id: "claims-paid-desc", fieldKey: "claims-paid", direction: "desc" },
+  { id: "claims-paid-asc", fieldKey: "claims-paid", direction: "asc" },
+  { id: "amount-paid-desc", fieldKey: "amount-paid", direction: "desc" },
+  { id: "amount-paid-asc", fieldKey: "amount-paid", direction: "asc" },
+  { id: "average-payout-desc", fieldKey: "average-payout", direction: "desc" },
+  { id: "average-payout-asc", fieldKey: "average-payout", direction: "asc" },
 ];
 
-function mountControls(checkedId = "life-payout-rate-desc") {
+function mountControls(checkedId = "claims-paid-desc") {
   document.body.innerHTML = `
     <section data-faq>
       <form id="wf-form-insurers-filters">
@@ -78,7 +78,7 @@ describe("initInsurerSort", () => {
     ready([instance]);
 
     expect(instance.sorting.value).toEqual({
-      fieldKey: "life-payout-rate",
+      fieldKey: "claims-paid",
       direction: "desc",
       interacted: false,
     });
@@ -150,5 +150,43 @@ describe("sortListItems", () => {
         (x) => x.fields["amount-paid"].value
       )
     ).toEqual(["£1.2 billion", "£860 million", "£750,000"]);
+  });
+
+  // Catch lexicographic decimal sorting and treating blank/null values as zero.
+  it.each(["asc", "desc"])("sorts decimal claims text numerically, missing last (%s)", (direction) => {
+    const items = [
+      { id: "middle", fields: { "claims-paid": { type: "text", value: ["98.75"] } } },
+      { id: "high", fields: { "claims-paid": { type: "text", value: ["98.8"] } } },
+      { id: "low", fields: { "claims-paid": { type: "text", value: ["97.9"] } } },
+      { id: "blank", fields: { "claims-paid": { type: "text", value: [""] } } },
+      { id: "null", fields: { "claims-paid": { type: "number", value: null } } },
+      { id: "absent", fields: {} },
+    ];
+    expect(sortListItems(items, { fieldKey: "claims-paid", direction }).map(x => x.id)).toEqual(
+      direction === "asc" ? ["low", "middle", "high", "blank", "null", "absent"] : ["high", "middle", "low", "blank", "null", "absent"]
+    );
+  });
+
+  // Catch missed compact units and unknown amounts being parsed as zero.
+  it.each(["amount-paid", "average-payout"].flatMap(fieldKey => ["asc", "desc"].map(direction => ({ fieldKey, direction }))))(
+    "sorts compact/long money units and keeps missing values last: $fieldKey $direction",
+    ({ fieldKey, direction }) => {
+      const items = [
+        ["billion", "£1.2bn"], ["million", "£860m"], ["thousand", "£900k"],
+        ["plain", "£1,200"], ["zero", "£0"], ["long", "£1.5 million"],
+        ["blank", ""], ["unknown", "Not supplied"], ["null", null],
+      ].map(([id, value]) => ({ id, fields: { [fieldKey]: { type: "text", value: [value] } } }));
+      items.push({ id: "absent", fields: {} });
+      expect(sortListItems(items, { fieldKey, direction }).map(x => x.id)).toEqual(direction === "asc"
+        ? ["zero", "plain", "thousand", "long", "million", "billion", "blank", "unknown", "null", "absent"]
+        : ["billion", "million", "long", "thousand", "plain", "zero", "blank", "unknown", "null", "absent"]);
+    }
+  );
+
+  it.each(["asc", "desc"])("keeps missing numeric values after a real zero (%s)", (direction) => {
+    const items = [item(NaN), item(null), item(0), item(98.7), item(undefined)];
+    expect(sortListItems(items, { fieldKey: "score", direction }).map(x => x.fields.score.value)).toEqual(
+      direction === "asc" ? [0, 98.7, NaN, null, undefined] : [98.7, 0, NaN, null, undefined]
+    );
   });
 });

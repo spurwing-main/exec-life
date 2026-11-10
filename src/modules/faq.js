@@ -227,6 +227,8 @@ function setupFaq(root) {
         plus: qs(item, ".faq_icon-plus"),
         minus: qs(item, ".faq_icon-minus"),
         icon: qs(item, ".faq_icon"),
+        originalInert: panel.getAttribute("inert"),
+        originalAriaHidden: panel.getAttribute("aria-hidden"),
         motion: null,
       };
 
@@ -242,10 +244,17 @@ function setupFaq(root) {
   const toggles = entries.map((e) => e.toggle);
   let isActive = null;
 
+  function setPanelAccessibility(entry, open) {
+    if (!open && entry.panel.contains(document.activeElement)) entry.toggle.focus();
+    entry.panel.toggleAttribute("inert", !open);
+    entry.panel.setAttribute("aria-hidden", open ? "false" : "true");
+  }
+
   function setOpen(entry, open, animate = true) {
     const shouldAnimate = animate && !reduceMotion() && Boolean(entry.motion);
     entry.item.setAttribute("data-open", open ? "true" : "false");
     entry.toggle.setAttribute("aria-expanded", open ? "true" : "false");
+    setPanelAccessibility(entry, open);
     if (entry.motion) entry.motion.set(open, shouldAnimate);
     else setRestingState(entry, open);
   }
@@ -275,6 +284,7 @@ function setupFaq(root) {
       } else {
         entry.item.setAttribute("data-open", "true");
         entry.toggle.removeAttribute("aria-expanded");
+        setPanelAccessibility(entry, true);
         if (entry.motion) entry.motion.set(true, false);
         else setRestingState(entry, true);
       }
@@ -327,7 +337,13 @@ function setupFaq(root) {
     root.removeEventListener("click", onClick);
     root.removeEventListener("keydown", onKeydown);
     mediaQueries.forEach((query) => query.removeEventListener("change", evaluateBreakpointState));
-    entries.forEach((entry) => entry.motion?.destroy());
+    entries.forEach((entry) => {
+      entry.motion?.destroy();
+      [["inert", entry.originalInert], ["aria-hidden", entry.originalAriaHidden]].forEach(([name, value]) => {
+        if (value === null) entry.panel.removeAttribute(name);
+        else entry.panel.setAttribute(name, value);
+      });
+    });
     root.removeAttribute("data-faq-ready");
   };
 }

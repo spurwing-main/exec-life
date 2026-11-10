@@ -20,12 +20,25 @@ const firstValue = (value) => (Array.isArray(value) ? value[0] : value);
 
 function moneyValue(value) {
   const text = String(value).toLowerCase().replaceAll(",", "");
-  const number = Number(text.match(/\d+(?:\.\d+)?/)?.[0]);
-  if (!Number.isFinite(number)) return null;
-  if (/\b(?:billion|bn)\b/.test(text)) return number * 1_000_000_000;
-  if (/\b(?:million|m)\b/.test(text)) return number * 1_000_000;
-  if (/\b(?:thousand|k)\b/.test(text)) return number * 1_000;
-  return number;
+  const match = text.match(/(-?\d+(?:\.\d+)?)\s*(billion|bn|million|m|thousand|k)?\b/);
+  if (!match) return null;
+  const multiplier = { billion: 1e9, bn: 1e9, million: 1e6, m: 1e6, thousand: 1e3, k: 1e3 };
+  return Number(match[1]) * (multiplier[match[2]] || 1);
+}
+
+function sortValue(field, fieldKey) {
+  const value = firstValue(field?.value);
+  if (value == null || String(value).trim() === "") return null;
+  if (MONEY_FIELDS.has(fieldKey)) return moneyValue(value);
+  if (fieldKey === "claims-paid" || field.type === "number") {
+    const number = Number(value);
+    return Number.isFinite(number) ? number : null;
+  }
+  if (field.type === "date") {
+    const time = value.getTime();
+    return Number.isFinite(time) ? time : null;
+  }
+  return String(value);
 }
 
 /**
@@ -39,32 +52,15 @@ export function sortListItems(items, { fieldKey, direction }) {
   }
 
   return [...items].sort((firstItem, secondItem) => {
-    const firstField = firstItem.fields?.[fieldKey];
-    const secondField = secondItem.fields?.[fieldKey];
-
-    if (!firstField) return 1;
-    if (!secondField) return -1;
-
-    const first = firstValue(firstField.value);
-    const second = firstValue(secondField.value);
+    const first = sortValue(firstItem.fields?.[fieldKey], fieldKey);
+    const second = sortValue(secondItem.fields?.[fieldKey], fieldKey);
+    if (first === null && second === null) return 0;
+    if (first === null) return 1;
+    if (second === null) return -1;
     const sign = direction === "asc" ? 1 : -1;
 
-    if (firstField.type === "number" && secondField.type === "number") {
-      if (Number.isNaN(first)) return 1;
-      if (Number.isNaN(second)) return -1;
+    if (typeof first === "number" && typeof second === "number") {
       return (first - second) * sign;
-    }
-
-    if (firstField.type === "date" && secondField.type === "date") {
-      return (first.getTime() - second.getTime()) * sign;
-    }
-
-    if (MONEY_FIELDS.has(fieldKey)) {
-      const firstMoney = moneyValue(first);
-      const secondMoney = moneyValue(second);
-      if (firstMoney === null) return 1;
-      if (secondMoney === null) return -1;
-      return (firstMoney - secondMoney) * sign;
     }
 
     return String(first).localeCompare(String(second), undefined, {

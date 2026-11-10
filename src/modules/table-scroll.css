@@ -1,0 +1,21 @@
+/* Shared table-only scroll treatment. The runtime creates/reuses this wrapper. */
+html [data-el-table-scroll] {
+  display: block;
+  box-sizing: border-box;
+  width: 100% !important;
+  max-width: 100% !important;
+  min-width: 0 !important;
+  overflow-x: auto !important;
+  overflow-y: hidden !important;
+  -webkit-overflow-scrolling: touch;
+}
+/* These legacy containers hold introductions/notes as well as tables. */
+html [data-article-table-scroll]:has([data-el-table-scroll]),
+html [data-insurer-table]:has([data-el-table-scroll]) {
+  overflow-x: visible !important;
+  overflow-y: visible !important;
+}
+html [data-el-table-scroll]:focus-visible {
+  outline: 2px solid var(--_color---midnight--100, #091628);
+  outline-offset: -3px;
+}
